@@ -127,6 +127,7 @@ make flags          # prints every flag and exactly what gates it
 
 ## Documentation
 
+- [`docs/ad-security-guide.md`](docs/ad-security-guide.md) — in-depth, concept-first AD security primer (start here to learn the theory)
 - [`docs/walkthrough.md`](docs/walkthrough.md) — the intended path, step by step, with commands
 - [`docs/attack-chains.md`](docs/attack-chains.md) — how each misconfig works and how to detect/fix it
 - [`docs/architecture.md`](docs/architecture.md) — topology, providers, design decisions
