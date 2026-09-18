@@ -1,0 +1,8 @@
+---
+# Stage 05: install the CA on srv01 and publish the ESC1 template
+- name: Install ADCS and plant the ESC1 chain
+  hosts: srv01
+  gather_facts: false
+  roles:
+    - adcs_ca
+    - vuln_adcs_esc1

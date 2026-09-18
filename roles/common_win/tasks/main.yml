@@ -1,0 +1,55 @@
+---
+# ---------------------------------------------------------------------------
+# Baseline setup applied to every Windows host BEFORE any domain role runs.
+# Point DNS at the DC, relax lab-only protections, and make WinRM stable.
+# ---------------------------------------------------------------------------
+
+- name: Set DNS server to the domain controller
+  ansible.windows.win_dns_client:
+    adapter_names: "*"
+    dns_servers:
+      - "{{ lab_dns_server }}"
+  when: lab_dns_server is defined
+
+- name: Set timezone (deterministic clock for Kerberos)
+  community.windows.win_timezone:
+    timezone: "UTC"
+
+- name: Ensure Windows time service is running and synced
+  ansible.windows.win_service:
+    name: w32time
+    state: started
+    start_mode: auto
+
+- name: Disable Windows Defender real-time protection (lab only)
+  ansible.windows.win_shell: |
+    Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
+  changed_when: false
+  failed_when: false
+  when: common_win_disable_defender | bool
+
+- name: Turn off Windows Firewall on all profiles (lab only)
+  community.windows.win_firewall:
+    state: disabled
+    profiles: [Domain, Private, Public]
+  when: common_win_disable_firewall | bool
+
+- name: Enable Remote Desktop (for manual poking during the lab)
+  ansible.windows.win_regedit:
+    path: HKLM:\System\CurrentControlSet\Control\Terminal Server
+    name: fDenyTSConnections
+    data: 0
+    type: dword
+  when: common_win_enable_rdp | bool
+
+- name: Allow RDP through (firewall is off in lab, but keep rule consistent)
+  community.windows.win_firewall_rule:
+    name: "Remote Desktop"
+    localport: 3389
+    action: allow
+    direction: in
+    protocol: tcp
+    enabled: true
+    state: present
+  when: common_win_enable_rdp | bool
+  failed_when: false

@@ -1,0 +1,8 @@
+---
+# Stage 01: baseline + promote dc01 to the first DC of vuln.local
+- name: Provision the Domain Controller
+  hosts: domain_controllers
+  gather_facts: false
+  roles:
+    - common_win
+    - domain_controller

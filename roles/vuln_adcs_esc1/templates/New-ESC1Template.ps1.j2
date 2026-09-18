@@ -1,0 +1,98 @@
+# =====================================================================
+#  New-ESC1Template.ps1   (rendered by Ansible)
+#  Creates a deliberately vulnerable certificate template (ESC1) and
+#  publishes it on the Enterprise CA.
+#
+#  ESC1 recipe:
+#    * Client Authentication EKU               (cert can be used to logon)
+#    * ENROLLEE_SUPPLIES_SUBJECT name flag     (requester picks the SAN)
+#    * Enroll + AutoEnroll granted to low-priv principal ("Domain Users")
+#    * Manager approval NOT required
+#    * No authorized signatures required
+#
+#  Net effect: any domain user can request a cert *as* a Domain Admin by
+#  supplying that DA's UPN in the SAN, then authenticate with it.
+# =====================================================================
+$ErrorActionPreference = 'Stop'
+Import-Module ActiveDirectory
+
+$templateName    = '{{ lab_adcs.template_name }}'
+$templateDisplay = '{{ lab_adcs.template_display_name }}'
+$enrollPrincipal = '{{ lab_adcs.enroll_principal }}'
+
+$rootDSE   = [ADSI]"LDAP://RootDSE"
+$configNC  = $rootDSE.configurationNamingContext
+$tmplPath  = "CN=Certificate Templates,CN=Public Key Services,CN=Services,$configNC"
+$tmplContainer = [ADSI]"LDAP://$tmplPath"
+
+# --- idempotency: bail early if it already exists --------------------
+$existing = $null
+try { $existing = [ADSI]"LDAP://CN=$templateName,$tmplPath" ; $null = $existing.Name } catch { $existing = $null }
+if ($existing -and $existing.Name) {
+    Write-Output "already-exists"
+    return
+}
+
+# --- clone the built-in "User" template as a starting point ----------
+$newTemplate = $tmplContainer.Create("pKICertificateTemplate", "CN=$templateName")
+$newTemplate.put("distinguishedName", "CN=$templateName,$tmplPath")
+$newTemplate.put("displayName", $templateDisplay)
+$newTemplate.put("revision", 100)
+$newTemplate.put("msPKI-Template-Schema-Version", 2)
+$newTemplate.put("msPKI-Template-Minor-Revision", 1)
+
+# Validity 1 year / renewal 6 weeks (encoded FILETIME byte arrays)
+$oneYear  = [byte[]](0x00,0x80,0x72,0x0E,0x5D,0xC2,0xFF,0xFF)
+$sixWeeks = [byte[]](0x00,0x80,0xA6,0x0A,0xFF,0xDE,0xFF,0xFF)
+$newTemplate.put("pKIExpirationPeriod", $oneYear)
+$newTemplate.put("pKIOverlapPeriod", $sixWeeks)
+
+# Key usage: digital signature + key encipherment
+$newTemplate.put("pKIKeyUsage", [byte[]](0xA0,0x00))
+$newTemplate.put("pKIMaxIssuingDepth", 0)
+$newTemplate.put("pKIDefaultKeySpec", 1)
+$newTemplate.put("msPKI-Minimal-Key-Size", 2048)
+
+# --- THE VULNERABLE BITS --------------------------------------------
+# 1) ENROLLEE_SUPPLIES_SUBJECT (0x1): requester supplies subject + SAN.
+$newTemplate.put("msPKI-Certificate-Name-Flag", 0x00000001)
+
+# 2) No manager approval, autoenroll allowed, publish to AD.
+#    (msPKI-Enrollment-Flag = 0 => CT_FLAG_NONE; specifically NOT
+#     PEND_ALL_REQUESTS/0x2, so no approval is required.)
+$newTemplate.put("msPKI-Enrollment-Flag", 0x00000000)
+
+# 3) No authorized signatures required.
+$newTemplate.put("msPKI-RA-Signature", 0x00000000)
+
+# 4) Client Authentication EKU (+ EFS/Secure Email harmless extras).
+$clientAuth = "1.3.6.1.5.5.7.3.2"
+$newTemplate.put("pKIExtendedKeyUsage", @($clientAuth))
+$newTemplate.putex(2, "msPKI-Certificate-Application-Policy", @($clientAuth))
+
+$newTemplate.SetInfo()
+
+# --- grant Enroll + AutoEnroll to the low-priv principal -------------
+$acct = New-Object System.Security.Principal.NTAccount($enrollPrincipal)
+$sid  = $acct.Translate([System.Security.Principal.SecurityIdentifier])
+
+$enrollGuid     = [GUID]"0e10c968-78fb-11d2-90d4-00c04f79dc55"  # Enroll
+$autoEnrollGuid = [GUID]"a05b8cc2-17bc-4802-a710-e7c15ab866a2"  # AutoEnroll
+
+$de = [ADSI]"LDAP://CN=$templateName,$tmplPath"
+$sec = $de.ObjectSecurity
+foreach ($g in @($enrollGuid, $autoEnrollGuid)) {
+    $ace = New-Object System.DirectoryServices.ExtendedRightAccessRule(
+        $sid, [System.Security.AccessControl.AccessControlType]::Allow, $g)
+    $sec.AddAccessRule($ace)
+}
+# Also give plain Read so the template is visible during enrolment.
+$readAce = New-Object System.DirectoryServices.ActiveDirectoryAccessRule(
+    $sid,
+    [System.DirectoryServices.ActiveDirectoryRights]::GenericRead,
+    [System.Security.AccessControl.AccessControlType]::Allow)
+$sec.AddAccessRule($readAce)
+$de.ObjectSecurity = $sec
+$de.CommitChanges()
+
+Write-Output "created"

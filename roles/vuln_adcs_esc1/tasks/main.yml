@@ -1,0 +1,37 @@
+---
+# ---------------------------------------------------------------------------
+# BONUS CHAIN : ADCS ESC1
+# Create + publish a certificate template that lets any Domain User enrol a
+# client-auth certificate while supplying an arbitrary SAN (impersonation).
+# ---------------------------------------------------------------------------
+
+- name: Render the ESC1 template-creation script
+  ansible.windows.win_template:
+    src: New-ESC1Template.ps1.j2
+    dest: C:\Windows\Temp\New-ESC1Template.ps1
+
+- name: Render the ESC1 publish script
+  ansible.windows.win_template:
+    src: Publish-ESC1Template.ps1.j2
+    dest: C:\Windows\Temp\Publish-ESC1Template.ps1
+
+- name: Create the vulnerable ESC1 certificate template in AD
+  ansible.windows.win_shell: powershell.exe -ExecutionPolicy Bypass -File C:\Windows\Temp\New-ESC1Template.ps1
+  register: esc1_create
+  changed_when: "'created' in esc1_create.stdout"
+
+- name: Give AD a moment to replicate the new template object
+  ansible.builtin.pause:
+    seconds: 10
+
+- name: Publish the ESC1 template on the CA
+  ansible.windows.win_shell: powershell.exe -ExecutionPolicy Bypass -File C:\Windows\Temp\Publish-ESC1Template.ps1
+  register: esc1_publish
+  changed_when: "'published' == (esc1_publish.stdout | trim)"
+  retries: 5
+  delay: 10
+  until: esc1_publish is succeeded
+
+- name: Report ESC1 template state
+  ansible.builtin.debug:
+    msg: "ESC1 template '{{ lab_adcs.template_name }}': create={{ esc1_create.stdout | trim }}, publish={{ esc1_publish.stdout | trim }}"

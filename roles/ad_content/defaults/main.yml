@@ -1,0 +1,4 @@
+---
+ad_content_users:  "{{ lab_users }}"
+ad_content_groups: "{{ lab_groups }}"
+ad_content_ous:    "{{ lab_ous }}"

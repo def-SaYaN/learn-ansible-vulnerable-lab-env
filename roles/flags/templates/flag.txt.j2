@@ -1,0 +1,10 @@
+{{ lab_flags[item.key] }}
+
+------------------------------------------------------------------
+Stage       : {{ item.name | default(item.key) }}
+Host        : {{ inventory_hostname }}
+Readable by : {{ (['SYSTEM', 'Administrators'] + (item.principals | default([]))) | join(', ') }}
+------------------------------------------------------------------
+{% if item.hint is defined %}
+Next: {{ item.hint }}
+{% endif %}

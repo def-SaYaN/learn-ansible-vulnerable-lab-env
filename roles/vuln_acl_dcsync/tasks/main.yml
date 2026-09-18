@@ -1,0 +1,53 @@
+---
+# ---------------------------------------------------------------------------
+# CHAIN 1 - STAGE 2 & 3 : ACL abuse  ->  DCSync
+#
+#  Stage 2: svc_mssql is granted GenericAll over the "IT Admins" GROUP object.
+#           After cracking svc_mssql the operator can add any principal to
+#           IT Admins (e.g. add themselves).
+#
+#  Stage 3: the "IT Admins" group is granted the two replication extended
+#           rights on the DOMAIN HEAD, which is exactly what DCSync abuses:
+#             - DS-Replication-Get-Changes         (1131f6aa-...)
+#             - DS-Replication-Get-Changes-All     (1131f6ad-...)
+#
+# We use dsacls because it is present on every DC and gives precise control
+# over extended rights - and it is what a defender would audit against.
+# ---------------------------------------------------------------------------
+
+- name: Resolve DN of the GenericAll target group
+  ansible.windows.win_shell: |
+    Import-Module ActiveDirectory
+    (Get-ADGroup -Identity "{{ lab_acl_generic_all.target_group }}").DistinguishedName
+  register: target_group_dn
+  changed_when: false
+
+- name: Grant GenericAll on the target group to the trustee (Stage 2 misconfig)
+  ansible.windows.win_shell: >-
+    dsacls "{{ target_group_dn.stdout | trim }}"
+    /G "{{ lab_domain_netbios }}\{{ lab_acl_generic_all.trustee }}:GA"
+  register: genericall
+  changed_when: "'The command completed successfully' in genericall.stdout"
+
+- name: Grant the DCSync replication rights to the privileged group (Stage 3 misconfig)
+  ansible.windows.win_shell: >-
+    dsacls "{{ lab_domain_dn }}"
+    /G "{{ lab_domain_netbios }}\{{ lab_dcsync_group }}:CA;{{ item }}"
+  loop:
+    - "Replicating Directory Changes"
+    - "Replicating Directory Changes All"
+  register: dcsync_grant
+  changed_when: "'The command completed successfully' in dcsync_grant.stdout"
+  loop_control:
+    label: "{{ lab_dcsync_group }} <- {{ item }}"
+
+- name: Verify replication rights landed on the domain head
+  ansible.windows.win_shell: |
+    dsacls "{{ lab_domain_dn }}" | Select-String -SimpleMatch "{{ lab_dcsync_group }}"
+  register: dcsync_verify
+  changed_when: false
+  failed_when: false
+
+- name: Show DCSync grant
+  ansible.builtin.debug:
+    msg: "{{ dcsync_verify.stdout_lines | default(['(dsacls output not captured - verify manually)']) }}"

@@ -1,0 +1,98 @@
+---
+# ===========================================================================
+#  Single source of truth for the lab's planted content.
+#  Users, groups, SPNs, ACLs and flags are all defined here so the roles and
+#  the walkthrough never drift apart.  Edit here, re-run, done.
+# ===========================================================================
+
+# --- Flags -----------------------------------------------------------------
+# One flag per attack stage.  Each is only reachable AFTER completing the
+# preceding step, so the flags double as progress checkpoints.
+lab_flags:
+  foothold:  "FLAG{w3lc0me_t0_vuln_local_recon_stage0}"
+  asrep:     "FLAG{asrep_r04sting_no_pre4uth_stage1b}"
+  kerberoast: "FLAG{kerber0ast_svc_mssql_cr4cked_stage1}"
+  acl_abuse: "FLAG{generic_all_group_takeover_stage2}"
+  dcsync:    "FLAG{dcsync_krbtgt_d0main_pwned_stage3}"
+  adcs_esc1: "FLAG{adcs_esc1_san_imp3rsonation_bonus}"
+
+# --- Domain users to create ------------------------------------------------
+# NOTE: passwords are deliberately weak / crackable for teaching purposes.
+lab_users:
+  - name: helpdesk
+    upn: helpdesk
+    display_name: "Help Desk Operator"
+    password: "Helpdesk#123"
+    description: "Tier 2 helpdesk. Standard domain user - the intended foothold."
+    groups: ["IT Support"]
+    ou: "Staff"
+
+  - name: svc_mssql
+    upn: svc_mssql
+    display_name: "MSSQL Service Account"
+    password: "Summer2024"          # weak: single dictionary word + year -> Kerberoast
+    description: "Runs the (pretend) MSSQL service on SRV01."
+    groups: ["Service Accounts"]
+    ou: "ServiceAccounts"
+    spns:
+      - "MSSQLSvc/srv01.vuln.local:1433"
+      - "MSSQLSvc/srv01.vuln.local"
+
+  - name: svc_backup
+    upn: svc_backup
+    display_name: "Backup Service Account"
+    password: "Backup2023"          # weak: crackable after AS-REP roast
+    description: "Legacy backup account. Kerberos pre-auth was disabled 'to fix a job'."
+    groups: ["Service Accounts"]
+    ou: "ServiceAccounts"
+    no_preauth: true                 # <- AS-REP roastable
+
+  - name: trent.admin
+    upn: trent.admin
+    display_name: "Trent (IT Admin)"
+    password: "Tr3nt!Admin#Complex#9271"   # strong: not meant to be cracked
+    description: "IT administrator. Member of the privileged IT Admins group."
+    groups: ["IT Admins"]
+    ou: "Staff"
+
+# --- Domain groups to create ----------------------------------------------
+lab_groups:
+  - name: "IT Support"
+    scope: global
+    ou: "Groups"
+    description: "Helpdesk / tier 2 support."
+  - name: "Service Accounts"
+    scope: global
+    ou: "Groups"
+    description: "Non-human service identities."
+  - name: "IT Admins"
+    scope: global
+    ou: "Groups"
+    description: "Privileged admins. Holds DCSync rights on the domain (misconfig)."
+
+# --- Organizational units --------------------------------------------------
+lab_ous:
+  - "Staff"
+  - "ServiceAccounts"
+  - "Groups"
+  - "Servers"
+  - "Workstations"
+
+# --- Planted ACL misconfiguration (Chain 1, stage 2) -----------------------
+# svc_mssql is granted GenericAll over the "IT Admins" group object.  Cracking
+# svc_mssql (Kerberoast) therefore lets the operator add themselves to IT
+# Admins, which in turn holds DCSync rights (granted by vuln_acl_dcsync).
+lab_acl_generic_all:
+  trustee: "svc_mssql"
+  target_group: "IT Admins"
+
+# The group that receives replication (DCSync) rights on the domain head.
+lab_dcsync_group: "IT Admins"
+
+# --- ADCS ESC1 vulnerable template (bonus chain) ---------------------------
+lab_adcs:
+  ca_common_name: "VULN-Root-CA"
+  template_name: "VulnUserESC1"
+  template_display_name: "Vuln User ESC1"
+  # Principals allowed to enrol.  "Domain Users" = any authenticated user.
+  enroll_principal: "VULN\\Domain Users"

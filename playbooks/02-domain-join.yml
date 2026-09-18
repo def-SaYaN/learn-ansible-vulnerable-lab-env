@@ -1,0 +1,8 @@
+---
+# Stage 02: baseline members + join them to the domain
+- name: Join member hosts to the domain
+  hosts: domain_members
+  gather_facts: false
+  roles:
+    - common_win
+    - domain_member

@@ -1,0 +1,21 @@
+---
+# ---------------------------------------------------------------------------
+# CHAIN 1 - STAGE 1b : AS-REP Roasting
+# Disable Kerberos pre-authentication on svc_backup so its AS-REP can be
+# requested without credentials and cracked offline. Alternate warm-up path.
+# ---------------------------------------------------------------------------
+
+- name: Disable Kerberos pre-authentication on flagged accounts
+  ansible.windows.win_shell: |
+    Import-Module ActiveDirectory
+    Set-ADAccountControl -Identity "{{ item.name }}" -DoesNotRequirePreAuth $true
+    (Get-ADUser -Identity "{{ item.name }}" -Properties DoesNotRequirePreAuth).DoesNotRequirePreAuth
+  register: preauth
+  changed_when: true
+  loop: "{{ lab_users | selectattr('no_preauth', 'defined') | selectattr('no_preauth') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Show AS-REP roastable accounts
+  ansible.builtin.debug:
+    msg: "DoesNotRequirePreAuth set on: {{ lab_users | selectattr('no_preauth', 'defined') | selectattr('no_preauth') | map(attribute='name') | list }}"

@@ -1,0 +1,16 @@
+---
+# ===========================================================================
+#  site.yml - full lab build, end to end.
+#  Run:  ansible-playbook site.yml
+#  (or use `make deploy` which wraps this)
+#
+#  Order matters: the DC must exist before members join; AD content must
+#  exist before vulns/flags reference it; the CA needs the domain.
+# ===========================================================================
+- import_playbook: playbooks/01-domain-controller.yml
+- import_playbook: playbooks/02-domain-join.yml
+- import_playbook: playbooks/03-ad-content.yml
+- import_playbook: playbooks/04-vulns.yml
+- import_playbook: playbooks/05-adcs.yml
+- import_playbook: playbooks/06-flags.yml
+- import_playbook: playbooks/07-pivot.yml

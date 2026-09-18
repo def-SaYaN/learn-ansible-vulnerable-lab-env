@@ -1,0 +1,51 @@
+---
+# ---------------------------------------------------------------------------
+# Promote this host to the first Domain Controller of a brand-new forest.
+# Uses the microsoft.ad collection, which is idempotent and handles the
+# reboot + WinRM reconnect dance for us.
+# ---------------------------------------------------------------------------
+
+- name: Set a known local Administrator password before promotion
+  ansible.windows.win_user:
+    name: Administrator
+    password: "{{ lab_domain_admin_password }}"
+    state: present
+  no_log: true
+
+- name: Install AD DS + management tools
+  ansible.windows.win_feature:
+    name:
+      - AD-Domain-Services
+      - RSAT-AD-PowerShell
+      - RSAT-AD-AdminCenter
+      - RSAT-ADDS-Tools
+    include_management_tools: true
+    state: present
+  register: adds_feature
+
+- name: Create the new forest / promote to first DC
+  microsoft.ad.domain:
+    dns_domain_name: "{{ lab_domain_name }}"
+    domain_netbios_name: "{{ lab_domain_netbios }}"
+    safe_mode_password: "{{ lab_safe_mode_password }}"
+    domain_mode: "{{ lab_forest_mode }}"
+    forest_mode: "{{ lab_forest_mode }}"
+    install_dns: "{{ dc_install_dns | bool }}"
+    reboot: true
+  register: domain_promote
+  no_log: false
+
+- name: Wait for AD web services / LDAP to answer after promotion
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    Import-Module ActiveDirectory
+    Get-ADDomain "{{ lab_domain_name }}" | Select-Object -ExpandProperty DNSRoot
+  register: ad_ready
+  until: ad_ready is succeeded
+  retries: 30
+  delay: 20
+  changed_when: false
+
+- name: Show the domain is up
+  ansible.builtin.debug:
+    msg: "Domain {{ ad_ready.stdout | trim }} is online on {{ inventory_hostname }}."

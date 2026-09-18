@@ -1,0 +1,28 @@
+---
+# Connection settings shared by every Windows host (WinRM over HTTP on the
+# isolated lab network only).  For a real/exposed network you would switch to
+# HTTPS + CredSSP; here plaintext-over-WinRM keeps the lab reproducible.
+ansible_connection: winrm
+ansible_port: 5985
+ansible_winrm_transport: ntlm
+ansible_winrm_scheme: http
+ansible_winrm_server_cert_validation: ignore
+ansible_user: vagrant
+ansible_password: "vagrant"
+
+# Domain identity ----------------------------------------------------------
+lab_domain_name: "vuln.local"
+lab_domain_netbios: "VULN"
+lab_domain_dn: "DC=vuln,DC=local"
+lab_forest_mode: "WinThreshold"
+lab_safe_mode_password: "SafeMode#Restore1"        # DSRM password (lab only)
+
+# The domain admin credentials Ansible uses once the domain exists.
+lab_domain_admin_user: "VULN\\Administrator"
+lab_domain_admin_password: "Passw0rd!Admin#2026"
+
+# DNS: every domain member points at the DC.
+lab_dns_server: "10.10.10.10"
+
+# Flag format used across the lab.
+flag_prefix: "FLAG"

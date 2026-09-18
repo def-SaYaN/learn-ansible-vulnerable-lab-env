@@ -1,0 +1,30 @@
+# Vagrant
+.vagrant/
+*.log
+*.box
+
+# Ansible
+*.retry
+inventory/host_vars/*.local.yml
+ansible.log
+.ansible/
+*.vault
+
+# Loot / cracked output produced while attacking the lab
+loot/
+*.kirbi
+*.ccache
+*.ntds
+hashes.txt
+cracked.txt
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+
+# Local secrets override (never commit real secrets)
+*.local.yml
+secrets.yml

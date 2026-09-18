@@ -1,0 +1,4 @@
+---
+lab_dc_ip: "10.10.10.10"
+# The DC is its own DNS server.
+lab_dns_server: "10.10.10.10"

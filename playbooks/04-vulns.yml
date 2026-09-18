@@ -1,0 +1,12 @@
+---
+# Stage 04: plant the AD-side attack chain (runs on the DC)
+#   - Kerberoast (SPNs on svc_mssql)
+#   - AS-REP roast (no-preauth on svc_backup)
+#   - ACL abuse -> DCSync (GenericAll for svc_mssql + replication rights for IT Admins)
+- name: Plant Active Directory vulnerabilities
+  hosts: domain_controllers
+  gather_facts: false
+  roles:
+    - vuln_kerberoast
+    - vuln_asrep
+    - vuln_acl_dcsync

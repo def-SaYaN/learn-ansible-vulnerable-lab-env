@@ -1,0 +1,15 @@
+---
+# This project deliberately ships insecure config for teaching. Silence rules
+# that fight that intent, and cosmetic rules that add noise to a lab.
+profile: min
+skip_list:
+  - no-changed-when       # many win_shell tasks are inherently imperative
+  - command-instead-of-shell
+  - risky-shell-pipe
+  - args[module]          # ADSI/dsacls need raw shell
+warn_list:
+  - experimental
+exclude_paths:
+  - .vagrant/
+  - collections/
+  - docs/

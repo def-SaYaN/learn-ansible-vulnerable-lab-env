@@ -1,0 +1,58 @@
+---
+# ---------------------------------------------------------------------------
+# Plant flag files with tight NTFS ACLs (and optional SMB shares) so each
+# flag is only readable once the operator has obtained the matching identity.
+# ---------------------------------------------------------------------------
+
+- name: Ensure flag directories exist
+  ansible.windows.win_file:
+    path: "{{ item.dir }}"
+    state: directory
+  loop: "{{ flags_to_place }}"
+  loop_control:
+    label: "{{ item.dir }}"
+
+- name: Write flag files
+  ansible.windows.win_template:
+    src: flag.txt.j2
+    dest: "{{ item.dir }}\\{{ item.filename }}"
+  loop: "{{ flags_to_place }}"
+  loop_control:
+    label: "{{ item.dir }}\\{{ item.filename }}"
+
+- name: Lock down NTFS ACLs (break inheritance, grant only intended principals)
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    $dir = '{{ item.dir }}'
+    icacls $dir /inheritance:r | Out-Null
+    icacls $dir /grant:r "SYSTEM:(OI)(CI)F" | Out-Null
+    icacls $dir /grant:r "BUILTIN\Administrators:(OI)(CI)F" | Out-Null
+    {% for p in item.principals | default([]) %}
+    icacls $dir /grant:r "{{ lab_domain_netbios }}\{{ p }}:(OI)(CI)R" | Out-Null
+    {% endfor %}
+    "acl-set"
+  args:
+    executable: powershell.exe
+  loop: "{{ flags_to_place }}"
+  loop_control:
+    label: "{{ item.dir }} -> {{ item.principals | default([]) | join(',') }}"
+  changed_when: true
+
+- name: Publish SMB shares for flags that declare one
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    $share = '{{ item.share }}'
+    if (Get-SmbShare -Name $share -ErrorAction SilentlyContinue) { "share-exists"; return }
+    New-SmbShare -Name $share -Path '{{ item.dir }}' -FullAccess "BUILTIN\Administrators" | Out-Null
+    {% for p in item.principals | default([]) %}
+    Grant-SmbShareAccess -Name $share -AccountName "{{ lab_domain_netbios }}\{{ p }}" -AccessRight Read -Force | Out-Null
+    {% endfor %}
+    "share-created"
+  args:
+    executable: powershell.exe
+  when: item.share is defined
+  loop: "{{ flags_to_place }}"
+  loop_control:
+    label: "share {{ item.share | default('-') }}"
+  changed_when: "'share-created' in smb_share.stdout"
+  register: smb_share

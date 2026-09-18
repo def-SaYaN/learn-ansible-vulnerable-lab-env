@@ -1,0 +1,6 @@
+---
+adcs_ca_type: EnterpriseRootCA
+adcs_ca_common_name: "{{ lab_adcs.ca_common_name }}"
+adcs_key_length: 2048
+adcs_hash: SHA256
+adcs_validity_years: 5

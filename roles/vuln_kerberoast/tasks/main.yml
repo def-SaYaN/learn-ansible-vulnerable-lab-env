@@ -1,0 +1,30 @@
+---
+# ---------------------------------------------------------------------------
+# CHAIN 1 - STAGE 1 : Kerberoasting
+# Register Service Principal Names on svc_mssql so any authenticated user can
+# request a TGS for it and crack the (deliberately weak) password offline.
+# ---------------------------------------------------------------------------
+
+- name: Register SPNs on service accounts that declare them
+  microsoft.ad.user:
+    name: "{{ item.name }}"
+    identity: "{{ item.name }}"
+    spn:
+      set: "{{ item.spns }}"
+    state: present
+  loop: "{{ lab_users | selectattr('spns', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.name }} : {{ item.spns | join(', ') }}"
+
+- name: Verify the SPNs are visible in the directory
+  ansible.windows.win_shell: |
+    Import-Module ActiveDirectory
+    Get-ADUser -LDAPFilter '(servicePrincipalName=*)' -Properties servicePrincipalName |
+      Select-Object SamAccountName,@{n='spn';e={$_.servicePrincipalName -join ';'}} |
+      ConvertTo-Json -Compress
+  register: spn_check
+  changed_when: false
+
+- name: Show Kerberoastable accounts
+  ansible.builtin.debug:
+    msg: "Kerberoastable: {{ spn_check.stdout | trim }}"

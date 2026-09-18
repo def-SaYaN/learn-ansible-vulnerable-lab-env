@@ -1,0 +1,23 @@
+# Pivot box - attacker workstation
+
+You are `{{ pivot_operator_user }}` on the Linux pivot ({{ inventory_hostname }}),
+which sits on the isolated lab network `10.10.10.0/24`.
+
+## Targets
+| Host  | IP           | Role                         |
+|-------|--------------|------------------------------|
+| dc01  | 10.10.10.10  | Domain Controller / DNS      |
+| srv01 | 10.10.10.20  | Member server, ADCS CA, SMB  |
+| ws01  | 10.10.10.30  | Domain workstation           |
+
+Domain: `{{ lab_domain_name }}`  (NetBIOS `{{ lab_domain_netbios }}`)
+
+## Suggested tooling (installed at build time if internet was available)
+- `impacket` - GetUserSPNs.py, GetNPUsers.py, secretsdump.py, dacledit.py
+- `bloodhound` (python ingestor) + BloodHound GUI for graphing ACLs
+- `certipy-ad` - ADCS enumeration and ESC1 abuse
+- `nxc` / `netexec`, `ldapsearch`, `nmap`, `kerbrute`
+
+## Where to start
+Read `~/notes/creds.txt`. It contains a real domain credential and the
+Stage 0 flag. From there, follow `docs/walkthrough.md` in the repo.

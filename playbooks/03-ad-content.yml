@@ -1,0 +1,7 @@
+---
+# Stage 03: create OUs, groups, users and memberships (runs on the DC)
+- name: Populate Active Directory content
+  hosts: domain_controllers
+  gather_facts: false
+  roles:
+    - ad_content

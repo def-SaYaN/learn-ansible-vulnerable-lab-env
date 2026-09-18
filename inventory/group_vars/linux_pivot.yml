@@ -1,0 +1,11 @@
+---
+ansible_connection: ssh
+ansible_user: vagrant
+ansible_ssh_private_key_file: "~/.vagrant.d/insecure_private_key"
+ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+ansible_python_interpreter: /usr/bin/python3
+
+# Low-privilege domain foothold credential that is "left behind" on the pivot
+# for the operator to discover.  This is the intended entry point (Stage 0).
+foothold_domain_user: "helpdesk"
+foothold_domain_password: "Helpdesk#123"

@@ -1,0 +1,16 @@
+IT Handover Notes  --  DO NOT SHARE
+====================================
+
+Ticket #4471 - new starter laptop imaging is failing again. Using the
+shared helpdesk account to map the deployment share until we get the
+service account sorted:
+
+    domain    : {{ lab_domain_name }}
+    username  : {{ foothold_domain_user }}
+    password  : {{ foothold_domain_password }}
+
+(The DC is dc01 / {{ lab_dc_ip | default('10.10.10.10') }}. SRV01 has the shares.)
+
+{{ lab_flags.foothold }}
+
+TODO: rotate this password, stop leaving it in text files. - T.

@@ -1,0 +1,75 @@
+---
+# ---------------------------------------------------------------------------
+# Configure the Linux pivot: point DNS at the DC, install recon tooling
+# (best effort), and drop the Stage 0 foothold (creds + flag).
+# ---------------------------------------------------------------------------
+
+- name: Install base recon packages (best effort)
+  ansible.builtin.apt:
+    name: "{{ pivot_packages }}"
+    state: present
+    update_cache: true
+  become: true
+  register: apt_install
+  failed_when: false
+
+- name: Install offensive Python tooling into a venv (best effort, needs internet)
+  ansible.builtin.pip:
+    name: "{{ pivot_pip_packages }}"
+    virtualenv: "/opt/offsec-venv"
+    virtualenv_command: "python3 -m venv"
+    state: present
+  become: true
+  register: pip_install
+  failed_when: false
+
+- name: Point resolver at the domain controller for vuln.local
+  ansible.builtin.copy:
+    dest: /etc/systemd/resolved.conf.d/vuln-lab.conf
+    content: |
+      [Resolve]
+      DNS={{ lab_dc_ip | default('10.10.10.10') }}
+      Domains=~{{ lab_domain_name }}
+    mode: "0644"
+  become: true
+  register: resolved_conf
+  failed_when: false
+
+- name: Restart systemd-resolved to apply DNS
+  ansible.builtin.service:
+    name: systemd-resolved
+    state: restarted
+  become: true
+  when: resolved_conf is changed
+  failed_when: false
+
+- name: Create the operator notes directory
+  ansible.builtin.file:
+    path: "/home/{{ pivot_operator_user }}/notes"
+    state: directory
+    owner: "{{ pivot_operator_user }}"
+    group: "{{ pivot_operator_user }}"
+    mode: "0700"
+
+- name: Drop the foothold creds + Stage 0 flag
+  ansible.builtin.template:
+    src: creds.txt.j2
+    dest: "/home/{{ pivot_operator_user }}/notes/creds.txt"
+    owner: "{{ pivot_operator_user }}"
+    group: "{{ pivot_operator_user }}"
+    mode: "0600"
+
+- name: Drop the attacker README
+  ansible.builtin.template:
+    src: README-attacker.md.j2
+    dest: "/home/{{ pivot_operator_user }}/notes/README-attacker.md"
+    owner: "{{ pivot_operator_user }}"
+    group: "{{ pivot_operator_user }}"
+    mode: "0644"
+
+- name: Report pivot readiness
+  ansible.builtin.debug:
+    msg: >-
+      Pivot ready. apt={{ 'ok' if not apt_install.failed else 'skipped/offline' }},
+      pip={{ 'ok' if not pip_install.failed else 'skipped/offline' }}.
+      Foothold + Stage 0 flag at ~/notes/creds.txt

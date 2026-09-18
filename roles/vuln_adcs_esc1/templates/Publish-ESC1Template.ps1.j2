@@ -1,0 +1,7 @@
+# Publish the ESC1 template on the CA so it becomes enrollable.
+$ErrorActionPreference = 'Stop'
+$templateName = '{{ lab_adcs.template_name }}'
+$published = certutil -CATemplates 2>$null | Select-String -SimpleMatch $templateName
+if ($published) { Write-Output "already-published"; return }
+Add-CATemplate -Name $templateName -Force
+Write-Output "published"

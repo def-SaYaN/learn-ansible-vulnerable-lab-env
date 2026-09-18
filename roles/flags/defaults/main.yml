@@ -1,0 +1,10 @@
+---
+# Per-host list of flags to plant. Overridden in the playbook for each host.
+# Each entry:
+#   key         : lookup into lab_flags
+#   dir         : directory to create on the target
+#   filename    : flag file name
+#   principals  : AD principals (besides SYSTEM/Administrators) allowed to READ
+#   share       : optional SMB share name (omit to skip sharing)
+#   hint        : short pointer to the next stage, written under the flag
+flags_to_place: []

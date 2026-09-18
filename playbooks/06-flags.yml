@@ -1,0 +1,51 @@
+---
+# Stage 06: plant the flags, each gated behind the identity you must obtain.
+
+- name: Plant SRV01 loot shares (Kerberoast / AS-REP / ACL / ADCS spoils)
+  hosts: srv01
+  gather_facts: false
+  vars:
+    flags_to_place:
+      - key: kerberoast
+        name: "Chain 1 / Stage 1 - Kerberoast loot"
+        dir: 'C:\Shares\mssql_backups'
+        filename: flag.txt
+        share: 'mssql_backups$'
+        principals: ["svc_mssql"]
+        hint: "svc_mssql has GenericAll over the 'IT Admins' group object. Add a principal you control to that group."
+      - key: asrep
+        name: "Chain 1 / Stage 1b - AS-REP loot"
+        dir: 'C:\Shares\backups'
+        filename: flag.txt
+        share: 'backups$'
+        principals: ["svc_backup"]
+        hint: "Now enumerate SPNs (GetUserSPNs) for the Kerberoast path to svc_mssql."
+      - key: acl_abuse
+        name: "Chain 1 / Stage 2 - IT Admins takeover"
+        dir: 'C:\Shares\itadmin'
+        filename: flag.txt
+        share: 'itadmin$'
+        principals: ["IT Admins"]
+        hint: "The 'IT Admins' group holds DS-Replication rights on the domain. Run DCSync (secretsdump)."
+      - key: adcs_esc1
+        name: "Bonus - ADCS ESC1 domain compromise"
+        dir: 'C:\Flags'
+        filename: adcs_esc1.txt
+        principals: ["Domain Admins"]
+        hint: "You authenticated as a Domain Admin using a certificate. Full compromise via ADCS."
+  roles:
+    - flags
+
+- name: Plant the DC domain-compromise flag (Domain Admins only)
+  hosts: domain_controllers
+  gather_facts: false
+  vars:
+    flags_to_place:
+      - key: dcsync
+        name: "Chain 1 / Stage 3 - DCSync / domain compromise"
+        dir: 'C:\Flags'
+        filename: domain_pwned.txt
+        principals: ["Domain Admins"]
+        hint: "krbtgt is yours. Forge a golden ticket or dump the full domain. Game over."
+  roles:
+    - flags

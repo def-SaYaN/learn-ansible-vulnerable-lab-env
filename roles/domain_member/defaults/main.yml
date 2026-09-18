@@ -1,0 +1,2 @@
+---
+member_target_ou: ""   # optional: DN of OU to drop the computer object into

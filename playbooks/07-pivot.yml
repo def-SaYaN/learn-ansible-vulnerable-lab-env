@@ -1,0 +1,7 @@
+---
+# Stage 07: configure the Linux pivot and drop the Stage 0 foothold
+- name: Configure the Linux pivot box
+  hosts: linux_pivot
+  gather_facts: true
+  roles:
+    - linux_pivot

@@ -1,0 +1,53 @@
+---
+# ---------------------------------------------------------------------------
+# Populate the domain with the OUs, groups and users defined in group_vars.
+# Runs against the DC (it hosts the directory). All modules are idempotent,
+# so re-running is safe.
+# ---------------------------------------------------------------------------
+
+- name: Create organizational units
+  microsoft.ad.ou:
+    name: "{{ item }}"
+    path: "{{ lab_domain_dn }}"
+    state: present
+  loop: "{{ ad_content_ous }}"
+
+- name: Create groups
+  microsoft.ad.group:
+    name: "{{ item.name }}"
+    scope: "{{ item.scope | default('global') }}"
+    category: security
+    path: "OU={{ item.ou }},{{ lab_domain_dn }}"
+    description: "{{ item.description | default(omit) }}"
+    state: present
+  loop: "{{ ad_content_groups }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Create users
+  microsoft.ad.user:
+    name: "{{ item.name }}"
+    upn: "{{ item.upn }}@{{ lab_domain_name }}"
+    firstname: "{{ item.display_name.split(' ')[0] | default(item.name) }}"
+    display_name: "{{ item.display_name | default(item.name) }}"
+    description: "{{ item.description | default(omit) }}"
+    password: "{{ item.password }}"
+    password_never_expires: true
+    update_password: on_create
+    path: "OU={{ item.ou }},{{ lab_domain_dn }}"
+    state: present
+  loop: "{{ ad_content_users }}"
+  loop_control:
+    label: "{{ item.name }}"
+  no_log: true
+
+- name: Add each user to their declared groups
+  microsoft.ad.group:
+    name: "{{ item.1 }}"
+    members:
+      add:
+        - "{{ item.0.name }}"
+    state: present
+  loop: "{{ ad_content_users | subelements('groups', skip_missing=True) }}"
+  loop_control:
+    label: "{{ item.0.name }} -> {{ item.1 }}"

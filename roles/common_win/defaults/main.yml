@@ -1,0 +1,6 @@
+---
+# Lab-only conveniences. These intentionally reduce friction so the lab is
+# reproducible; they are NOT production hardening.
+common_win_disable_defender: true
+common_win_disable_firewall: true
+common_win_enable_rdp: true

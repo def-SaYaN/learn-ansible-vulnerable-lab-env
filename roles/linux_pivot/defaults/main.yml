@@ -1,0 +1,17 @@
+---
+pivot_packages:
+  - python3
+  - python3-pip
+  - python3-venv
+  - git
+  - ldap-utils
+  - dnsutils
+  - nmap
+  - curl
+  - jq
+# Best-effort pip installs for offensive tooling (needs internet at build time).
+pivot_pip_packages:
+  - impacket
+  - bloodhound
+  - certipy-ad
+pivot_operator_user: vagrant
