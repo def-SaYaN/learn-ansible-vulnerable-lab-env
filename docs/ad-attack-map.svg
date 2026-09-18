@@ -1,0 +1,133 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1180" viewBox="0 0 1600 1180" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="ablue" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#2563eb"/></marker>
+    <marker id="ared"  markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#dc2626"/></marker>
+    <marker id="aslate" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#334155"/></marker>
+    <marker id="agreen" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#16a34a"/></marker>
+  </defs>
+
+  <!-- background (explicit, so it reads in GitHub light AND dark mode) -->
+  <rect x="0" y="0" width="1600" height="1180" fill="#f8fafc"/>
+  <rect x="0" y="0" width="1600" height="72" fill="#0f172a"/>
+  <text x="40" y="46" fill="#ffffff" font-size="30" font-weight="700">Active Directory attack map &#8212; Kerberos flow &amp; the lab chain</text>
+  <text x="1560" y="46" fill="#94a3b8" font-size="16" text-anchor="end">vuln.local &#183; learn-ansible-vulnerable-lab-env</text>
+
+  <!-- ============================ PANEL A: KERBEROS ============================ -->
+  <rect x="30" y="92" width="1540" height="470" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <text x="52" y="128" fill="#0f172a" font-size="22" font-weight="700">1 &#183; Kerberos authentication: the ticket dance</text>
+  <text x="52" y="152" fill="#64748b" font-size="15">Blue = normal protocol. Red = where an attacker steps in. The recurring theme: something on the wire is encrypted with an account&#8217;s password key.</text>
+
+  <!-- actor lanes -->
+  <!-- Client -->
+  <rect x="150" y="175" width="220" height="46" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="260" y="204" fill="#1e3a8a" font-size="17" font-weight="700" text-anchor="middle">Client (you: helpdesk)</text>
+  <line x1="260" y1="221" x2="260" y2="545" stroke="#93c5fd" stroke-width="2" stroke-dasharray="4 5"/>
+  <!-- KDC -->
+  <rect x="690" y="175" width="220" height="46" rx="8" fill="#f1f5f9" stroke="#334155" stroke-width="1.5"/>
+  <text x="800" y="197" fill="#0f172a" font-size="17" font-weight="700" text-anchor="middle">KDC / DC (dc01)</text>
+  <text x="800" y="214" fill="#475569" font-size="12" text-anchor="middle">holds krbtgt key &amp; all hashes</text>
+  <line x1="800" y1="221" x2="800" y2="545" stroke="#94a3b8" stroke-width="2" stroke-dasharray="4 5"/>
+  <!-- Service -->
+  <rect x="1230" y="175" width="220" height="46" rx="8" fill="#f1f5f9" stroke="#334155" stroke-width="1.5"/>
+  <text x="1340" y="197" fill="#0f172a" font-size="17" font-weight="700" text-anchor="middle">Service (svc_mssql</text>
+  <text x="1340" y="214" fill="#475569" font-size="12" text-anchor="middle">SPN MSSQLSvc/srv01)</text>
+  <line x1="1340" y1="221" x2="1340" y2="545" stroke="#94a3b8" stroke-width="2" stroke-dasharray="4 5"/>
+
+  <!-- Exchange 1: AS-REQ -->
+  <line x1="260" y1="258" x2="796" y2="258" stroke="#2563eb" stroke-width="2.5" marker-end="url(#ablue)"/>
+  <text x="270" y="250" fill="#1e3a8a" font-size="14" font-weight="600">AS-REQ &#8594; pre-auth: timestamp encrypted with my key (proves I know my password)</text>
+  <!-- Exchange 2: AS-REP -->
+  <line x1="800" y1="292" x2="264" y2="292" stroke="#2563eb" stroke-width="2.5" marker-end="url(#ablue)"/>
+  <text x="270" y="284" fill="#1e3a8a" font-size="14" font-weight="600">&#8592; AS-REP: TGT (sealed with krbtgt key) + session key</text>
+  <!-- AS-REP roast note -->
+  <rect x="150" y="306" width="470" height="40" rx="7" fill="#fef2f2" stroke="#dc2626" stroke-width="1.3"/>
+  <text x="164" y="323" fill="#991b1b" font-size="13" font-weight="700">AS-REP ROASTING (Stage 1b):</text>
+  <text x="164" y="339" fill="#991b1b" font-size="12.5">if pre-auth is OFF (svc_backup), anyone gets the AS-REP &#8594; crack offline.</text>
+
+  <!-- Exchange 3: TGS-REQ -->
+  <line x1="260" y1="392" x2="796" y2="392" stroke="#2563eb" stroke-width="2.5" marker-end="url(#ablue)"/>
+  <text x="270" y="384" fill="#1e3a8a" font-size="14" font-weight="600">TGS-REQ &#8594; present TGT, ask for a ticket to SPN MSSQLSvc/srv01</text>
+  <!-- Exchange 4: TGS-REP -->
+  <line x1="800" y1="426" x2="264" y2="426" stroke="#2563eb" stroke-width="2.5" marker-end="url(#ablue)"/>
+  <text x="270" y="418" fill="#1e3a8a" font-size="14" font-weight="600">&#8592; TGS-REP: service ticket sealed with the SERVICE ACCOUNT&#8217;s key</text>
+  <!-- Kerberoast note -->
+  <rect x="150" y="440" width="470" height="40" rx="7" fill="#fef2f2" stroke="#dc2626" stroke-width="1.3"/>
+  <text x="164" y="457" fill="#991b1b" font-size="13" font-weight="700">KERBEROASTING (Stage 1):</text>
+  <text x="164" y="473" fill="#991b1b" font-size="12.5">any user may ask for any SPN&#8217;s ticket &#8594; crack svc_mssql offline (weak pwd).</text>
+
+  <!-- Exchange 5: AP-REQ -->
+  <line x1="260" y1="520" x2="1336" y2="520" stroke="#2563eb" stroke-width="2.5" marker-end="url(#ablue)"/>
+  <text x="270" y="512" fill="#1e3a8a" font-size="14" font-weight="600">AP-REQ &#8594; present the service ticket; the service reads the PAC (my groups) and grants access</text>
+
+  <!-- ============================ PANEL B: ATTACK CHAIN ============================ -->
+  <rect x="30" y="586" width="1540" height="560" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <text x="52" y="622" fill="#0f172a" font-size="22" font-weight="700">2 &#183; The lab attack chain: from a helpdesk password to Domain Admin</text>
+  <text x="52" y="646" fill="#64748b" font-size="15">Each box is one privilege step (a BloodHound &#8220;edge&#8221;). A green tag marks the flag you collect there.</text>
+
+  <!-- Foothold -->
+  <rect x="46" y="700" width="250" height="96" rx="10" fill="#f8fafc" stroke="#334155" stroke-width="1.8"/>
+  <text x="60" y="726" fill="#0f172a" font-size="16" font-weight="700">Stage 0 &#183; Foothold</text>
+  <text x="60" y="748" fill="#334155" font-size="13">pivot: ~/notes/creds.txt</text>
+  <text x="60" y="767" fill="#334155" font-size="13">helpdesk : Helpdesk#123</text>
+  <rect x="60" y="774" width="66" height="18" rx="9" fill="#dcfce7" stroke="#16a34a"/><text x="93" y="787" fill="#166534" font-size="11" font-weight="700" text-anchor="middle">&#9873; flag</text>
+
+  <!-- AS-REP (warm-up) -->
+  <rect x="356" y="636" width="250" height="82" rx="10" fill="#fff7ed" stroke="#c2410c" stroke-width="1.6"/>
+  <text x="370" y="661" fill="#7c2d12" font-size="15" font-weight="700">Stage 1b &#183; AS-REP roast</text>
+  <text x="370" y="682" fill="#7c2d12" font-size="13">svc_backup &#8594; Backup2023</text>
+  <rect x="370" y="690" width="66" height="18" rx="9" fill="#dcfce7" stroke="#16a34a"/><text x="403" y="703" fill="#166534" font-size="11" font-weight="700" text-anchor="middle">&#9873; flag</text>
+
+  <!-- Kerberoast -->
+  <rect x="356" y="754" width="250" height="82" rx="10" fill="#fef2f2" stroke="#dc2626" stroke-width="1.8"/>
+  <text x="370" y="779" fill="#991b1b" font-size="15" font-weight="700">Stage 1 &#183; Kerberoast</text>
+  <text x="370" y="800" fill="#991b1b" font-size="13">svc_mssql &#8594; Summer2024</text>
+  <rect x="370" y="808" width="66" height="18" rx="9" fill="#dcfce7" stroke="#16a34a"/><text x="403" y="821" fill="#166534" font-size="11" font-weight="700" text-anchor="middle">&#9873; flag</text>
+
+  <!-- ACL abuse -->
+  <rect x="666" y="700" width="250" height="96" rx="10" fill="#fef2f2" stroke="#dc2626" stroke-width="1.8"/>
+  <text x="680" y="726" fill="#991b1b" font-size="15" font-weight="700">Stage 2 &#183; ACL abuse</text>
+  <text x="680" y="747" fill="#991b1b" font-size="13">GenericAll on &#8220;IT Admins&#8221;</text>
+  <text x="680" y="765" fill="#991b1b" font-size="13">&#8594; add yourself to group</text>
+  <rect x="680" y="772" width="66" height="18" rx="9" fill="#dcfce7" stroke="#16a34a"/><text x="713" y="785" fill="#166534" font-size="11" font-weight="700" text-anchor="middle">&#9873; flag</text>
+
+  <!-- DCSync -->
+  <rect x="976" y="700" width="250" height="96" rx="10" fill="#fef2f2" stroke="#dc2626" stroke-width="1.8"/>
+  <text x="990" y="726" fill="#991b1b" font-size="15" font-weight="700">Stage 3 &#183; DCSync</text>
+  <text x="990" y="747" fill="#991b1b" font-size="13">IT Admins holds repl. rights</text>
+  <text x="990" y="765" fill="#991b1b" font-size="13">dump krbtgt + Administrator</text>
+  <rect x="990" y="772" width="150" height="18" rx="9" fill="#dcfce7" stroke="#16a34a"/><text x="1065" y="785" fill="#166534" font-size="11" font-weight="700" text-anchor="middle">&#9873; flag (via PtH)</text>
+
+  <!-- Domain Admin goal -->
+  <rect x="1286" y="694" width="260" height="108" rx="12" fill="#dcfce7" stroke="#15803d" stroke-width="2.4"/>
+  <text x="1416" y="736" fill="#14532d" font-size="20" font-weight="800" text-anchor="middle">DOMAIN ADMIN</text>
+  <text x="1416" y="762" fill="#166534" font-size="13" text-anchor="middle">full domain compromise</text>
+  <text x="1416" y="782" fill="#166534" font-size="13" text-anchor="middle">golden ticket possible</text>
+
+  <!-- Bonus ESC1 -->
+  <rect x="666" y="980" width="300" height="100" rx="10" fill="#faf5ff" stroke="#7e22ce" stroke-width="1.8"/>
+  <text x="680" y="1006" fill="#581c87" font-size="15" font-weight="700">Bonus &#183; ADCS ESC1</text>
+  <text x="680" y="1027" fill="#581c87" font-size="13">template VulnUserESC1 (SRV01 CA)</text>
+  <text x="680" y="1045" fill="#581c87" font-size="13">request a cert AS Administrator</text>
+  <rect x="680" y="1052" width="66" height="18" rx="9" fill="#dcfce7" stroke="#16a34a"/><text x="713" y="1065" fill="#166534" font-size="11" font-weight="700" text-anchor="middle">&#9873; flag</text>
+
+  <!-- arrows -->
+  <!-- foothold -> asrep -->
+  <path d="M296,735 C326,700 330,690 352,682" fill="none" stroke="#334155" stroke-width="2.2" marker-end="url(#aslate)"/>
+  <!-- foothold -> kerberoast -->
+  <path d="M296,762 C326,785 330,790 352,793" fill="none" stroke="#dc2626" stroke-width="2.4" marker-end="url(#ared)"/>
+  <!-- foothold -> esc1 (down) -->
+  <path d="M171,796 C171,900 300,1010 662,1020" fill="none" stroke="#7e22ce" stroke-width="2.2" marker-end="url(#aslate)"/>
+  <text x="200" y="900" fill="#6b21a8" font-size="12.5" font-weight="600">any domain user</text>
+  <!-- kerberoast -> acl -->
+  <path d="M606,790 C636,780 640,760 662,752" fill="none" stroke="#dc2626" stroke-width="2.4" marker-end="url(#ared)"/>
+  <!-- acl -> dcsync -->
+  <line x1="916" y1="748" x2="972" y2="748" stroke="#dc2626" stroke-width="2.6" marker-end="url(#ared)"/>
+  <!-- dcsync -> DA -->
+  <line x1="1226" y1="748" x2="1282" y2="748" stroke="#16a34a" stroke-width="2.8" marker-end="url(#agreen)"/>
+  <!-- esc1 -> DA (long diagonal) -->
+  <path d="M966,1010 C1180,980 1330,880 1416,806" fill="none" stroke="#7e22ce" stroke-width="2.4" marker-end="url(#agreen)"/>
+  <text x="1120" y="960" fill="#6b21a8" font-size="12.5" font-weight="600">independent path to DA</text>
+
+  <!-- footer legend -->
+  <text x="52" y="1120" fill="#475569" font-size="13">Legend:  <tspan fill="#2563eb" font-weight="700">blue</tspan> normal Kerberos  &#183;  <tspan fill="#dc2626" font-weight="700">red</tspan> attack step  &#183;  <tspan fill="#7e22ce" font-weight="700">purple</tspan> ADCS path  &#183;  <tspan fill="#16a34a" font-weight="700">green</tspan> flag / goal.   Full theory: docs/ad-security-guide.md &#183; commands: docs/walkthrough.md</text>
+</svg>

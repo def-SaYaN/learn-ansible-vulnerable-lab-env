@@ -6,6 +6,9 @@ zero and building toward interview-level depth (HackTheBox / OSCP / CRTP style).
 It pairs with the vulnerable lab in this repo: wherever a concept maps to a
 planted vulnerability, you will see a **In this lab** note.
 
+> **Visual companion:** open [`ad-attack-map.svg`](ad-attack-map.svg) for a one-page
+> diagram of the Kerberos ticket flow and the full lab attack chain.
+
 Read it slowly. AD attacks are not about memorizing commands — they are about
 understanding a handful of protocols deeply enough that the attacks become
 obvious consequences. This guide spends most of its words on the "why".

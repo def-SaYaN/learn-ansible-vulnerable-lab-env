@@ -127,6 +127,7 @@ make flags          # prints every flag and exactly what gates it
 
 ## Documentation
 
+- [`docs/ad-attack-map.svg`](docs/ad-attack-map.svg) — one-page visual: the Kerberos flow and the full attack chain
 - [`docs/ad-security-guide.md`](docs/ad-security-guide.md) — in-depth, concept-first AD security primer (start here to learn the theory)
 - [`docs/walkthrough.md`](docs/walkthrough.md) — the intended path, step by step, with commands
 - [`docs/attack-chains.md`](docs/attack-chains.md) — how each misconfig works and how to detect/fix it
