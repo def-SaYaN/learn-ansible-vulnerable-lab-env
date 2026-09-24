@@ -10,6 +10,5 @@ skip_list:
 warn_list:
   - experimental
 exclude_paths:
-  - .vagrant/
   - collections/
   - docs/

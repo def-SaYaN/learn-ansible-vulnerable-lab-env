@@ -27,7 +27,7 @@ variable "public_key_path" {
 }
 
 variable "admin_password" {
-  description = "Local Administrator / domain admin password set on the Windows hosts. MUST match lab_domain_admin_password in inventory-aws/group_vars/windows.yml."
+  description = "Local Administrator / domain admin password set on the Windows hosts. MUST match lab_domain_admin_password in inventory/group_vars/windows.yml."
   type        = string
   sensitive   = true
   default     = "Passw0rd!Admin#2026"

@@ -1,7 +1,5 @@
-# Vagrant
-.vagrant/
+# Logs
 *.log
-*.box
 
 # Ansible
 *.retry
@@ -38,4 +36,4 @@ terraform/terraform.tfvars
 crash.log
 
 # Generated cloud inventory (created by `terraform apply`)
-inventory-aws/hosts.ini
+inventory/hosts.ini

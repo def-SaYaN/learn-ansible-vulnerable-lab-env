@@ -12,5 +12,4 @@ rules:
     max-spaces-inside: 1
   octal-values: disable
 ignore: |
-  .vagrant/
   collections/

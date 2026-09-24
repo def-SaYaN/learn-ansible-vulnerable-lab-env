@@ -3,7 +3,7 @@ aws_region    = "us-east-1"
 operator_cidr = "REPLACE_WITH_YOUR_PUBLIC_IP/32"   # curl -s https://checkip.amazonaws.com
 public_key_path = "~/.ssh/id_rsa.pub"
 
-# Must match lab_domain_admin_password in inventory-aws/group_vars/windows.yml
+# Must match lab_domain_admin_password in inventory/group_vars/windows.yml
 admin_password = "Passw0rd!Admin#2026"
 
 # Cost knobs

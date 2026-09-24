@@ -19,6 +19,6 @@ jobs:
       - name: yamllint
         run: yamllint .
       - name: ansible syntax check
-        run: ansible-playbook site.yml --syntax-check
+        run: ansible-playbook -i inventory/hosts.ini.example site.yml --syntax-check
       - name: ansible-lint
         run: ansible-lint || true

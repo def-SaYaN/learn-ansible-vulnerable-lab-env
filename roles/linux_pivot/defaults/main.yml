@@ -14,4 +14,4 @@ pivot_pip_packages:
   - impacket
   - bloodhound
   - certipy-ad
-pivot_operator_user: vagrant
+pivot_operator_user: ubuntu

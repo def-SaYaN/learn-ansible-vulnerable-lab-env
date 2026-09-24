@@ -1,6 +1,6 @@
 # Render the Ansible inventory from the live instance public IPs.
 resource "local_file" "inventory" {
-  filename = "${path.module}/../inventory-aws/hosts.ini"
+  filename = "${path.module}/../inventory/hosts.ini"
   content = templatefile("${path.module}/templates/inventory.ini.tpl", {
     dc01_public_ip  = aws_instance.windows["dc01"].public_ip
     srv01_line      = "srv01 ansible_host=${aws_instance.windows["srv01"].public_ip}"
@@ -27,12 +27,12 @@ output "private_ips" {
 output "next_steps" {
   value = <<-EOT
     1) Wait ~5 min for the Windows hosts to finish first-boot (rename + WinRM + reboot).
-    2) Confirm the generated inventory: cat inventory-aws/hosts.ini
+    2) Confirm the generated inventory: cat inventory/hosts.ini
     3) Test connectivity:
-         ansible -i inventory-aws/hosts.ini windows -m ansible.windows.win_ping
-         ansible -i inventory-aws/hosts.ini linux_pivot -m ansible.builtin.ping
+         ansible -i inventory/hosts.ini windows -m ansible.windows.win_ping
+         ansible -i inventory/hosts.ini linux_pivot -m ansible.builtin.ping
     4) Build the lab:
-         ansible-playbook -i inventory-aws/hosts.ini site.yml
+         ansible-playbook -i inventory/hosts.ini site.yml
     5) When done for the day, save money: terraform destroy   (or stop the instances)
   EOT
 }

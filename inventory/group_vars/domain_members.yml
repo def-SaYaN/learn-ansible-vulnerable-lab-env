@@ -1,3 +1,2 @@
 ---
-# Member servers/workstations join the domain and use the DC for DNS.
 lab_dns_server: "10.10.10.10"

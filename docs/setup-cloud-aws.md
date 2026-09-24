@@ -57,7 +57,7 @@ Edit `terraform.tfvars`:
   `curl -s https://checkip.amazonaws.com` then append `/32`.
 - `admin_password` — the Windows Administrator password. **It must match**
   `lab_domain_admin_password` and `ansible_password` in
-  `inventory-aws/group_vars/windows.yml`. Change both together if you edit it.
+  `inventory/group_vars/windows.yml`. Change both together if you edit it.
 - optionally set `enable_ws01 = false` to drop the workstation and save money.
 
 ## Step 2 — provision the VMs
@@ -69,7 +69,7 @@ terraform apply     # type yes
 ```
 
 This creates the VPC, subnet, security group, key pair, and instances, and
-writes `inventory-aws/hosts.ini` with the live public IPs. Wait ~5 minutes:
+writes `inventory/hosts.ini` with the live public IPs. Wait ~5 minutes:
 each Windows host renames itself, sets the Administrator password, enables
 WinRM, and reboots on first boot.
 
@@ -77,9 +77,9 @@ WinRM, and reboots on first boot.
 
 ```bash
 cd ..
-cat inventory-aws/hosts.ini      # confirm IPs were filled in
-ansible -i inventory-aws/hosts.ini windows -m ansible.windows.win_ping
-ansible -i inventory-aws/hosts.ini linux_pivot -m ansible.builtin.ping
+cat inventory/hosts.ini      # confirm IPs were filled in
+ansible -i inventory/hosts.ini windows -m ansible.windows.win_ping
+ansible -i inventory/hosts.ini linux_pivot -m ansible.builtin.ping
 ```
 
 `win_ping` returning `pong` means WinRM + credentials are good. If it times
@@ -88,7 +88,7 @@ out, the host is probably still finishing first-boot — wait and retry.
 ## Step 4 — build the lab
 
 ```bash
-ansible-playbook -i inventory-aws/hosts.ini site.yml
+ansible-playbook -i inventory/hosts.ini site.yml
 ```
 
 Same playbook as the local build. It promotes `dc01`, joins the members,
@@ -112,7 +112,7 @@ aws ec2 stop-instances --instance-ids <ids...>
 ```
 
 If you stop/start instead of destroy, the **public IPs change** on restart —
-re-run `terraform apply` to regenerate `inventory-aws/hosts.ini`.
+re-run `terraform apply` to regenerate `inventory/hosts.ini`.
 
 ## Notes, gotchas, and hardening
 
