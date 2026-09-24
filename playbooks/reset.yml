@@ -9,7 +9,7 @@
 #  Run:  ansible-playbook playbooks/reset.yml     (or `make reset-soft`)
 #
 #  For a guaranteed-clean environment (issued certificates, golden tickets,
-#  local artifacts on hosts) use the full rebuild: `make reset`.
+#  local artifacts on hosts) use the full rebuild: `make tf-destroy && make all`.
 # ===========================================================================
 
 - name: Purge planted AD content (users, groups, OUs) on the DC
@@ -68,4 +68,4 @@
         msg:
           - "Soft reset complete. AD content, vulns, ESC1 template and flags re-planted."
           - "Note: certificates already issued by the CA and any golden tickets survive a soft reset."
-          - "For a fully pristine lab run: make reset   (destroys and rebuilds the VMs)."
+          - "For a fully pristine lab run: make tf-destroy && make all (rebuilds the VMs)."

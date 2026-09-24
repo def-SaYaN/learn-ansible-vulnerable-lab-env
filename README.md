@@ -242,6 +242,7 @@ near zero when destroyed.
   concept-first AD security primer. Start here for the theory.
 - [`docs/ad-attack-map.svg`](docs/ad-attack-map.svg) — one-page visual of the
   Kerberos flow and the full attack chain.
+- [`docs/ansible-explained.md`](docs/ansible-explained.md) — line-by-line tour of every playbook and role; read this to learn Ansible from the project itself.
 - [`docs/walkthrough.md`](docs/walkthrough.md) — the intended path, step by
   step, with real commands.
 - [`docs/attack-chains.md`](docs/attack-chains.md) — how each misconfiguration
