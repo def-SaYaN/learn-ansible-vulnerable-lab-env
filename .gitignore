@@ -28,3 +28,14 @@ cracked.txt
 # Local secrets override (never commit real secrets)
 *.local.yml
 secrets.yml
+
+# Terraform
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+terraform/terraform.tfvars
+crash.log
+
+# Generated cloud inventory (created by `terraform apply`)
+inventory-aws/hosts.ini

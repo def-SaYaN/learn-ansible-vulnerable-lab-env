@@ -1,0 +1,27 @@
+---
+# Cloud connection settings for the Windows hosts (WinRM over the internet,
+# locked to your IP by the security group; NTLM gives message-level encryption).
+ansible_connection: winrm
+ansible_port: 5985
+ansible_winrm_transport: ntlm
+ansible_winrm_scheme: http
+ansible_winrm_server_cert_validation: ignore
+ansible_user: Administrator
+# MUST equal the Terraform admin_password variable.
+ansible_password: "Passw0rd!Admin#2026"
+
+# Domain identity (unchanged from the local build).
+lab_domain_name: "vuln.local"
+lab_domain_netbios: "VULN"
+lab_domain_dn: "DC=vuln,DC=local"
+lab_forest_mode: "WinThreshold"
+lab_safe_mode_password: "SafeMode#Restore1"
+
+# After promotion the local Administrator becomes the domain Administrator with
+# the same password, so these line up.
+lab_domain_admin_user: "VULN\\Administrator"
+lab_domain_admin_password: "Passw0rd!Admin#2026"
+
+# Members resolve through the DC's PRIVATE IP.
+lab_dns_server: "10.10.10.10"
+flag_prefix: "FLAG"

@@ -133,6 +133,7 @@ make flags          # prints every flag and exactly what gates it
 - [`docs/attack-chains.md`](docs/attack-chains.md) — how each misconfig works and how to detect/fix it
 - [`docs/architecture.md`](docs/architecture.md) — topology, providers, design decisions
 - [`docs/troubleshooting.md`](docs/troubleshooting.md) — WinRM, reboots, DNS, ADCS gotchas
+- [`docs/setup-cloud-aws.md`](docs/setup-cloud-aws.md) — run the whole lab on AWS (Terraform + Ansible), for Apple Silicon Macs or anyone without an x86 host
 
 ## License
 
