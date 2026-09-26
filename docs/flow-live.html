@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Live Build Player — Terraform &amp; Ansible streaming, with background mechanics</title>
+<style>
+  :root{
+    --bg:#080b11; --panel:#0e131c; --panel2:#141b27; --panel3:#1b2431; --line:#263041;
+    --tf:#a568e0; --tf2:#c491f0; --ans:#ff6b6b; --ans2:#ff9a9a;
+    --aws:#ff9900; --win:#3db8ff; --lin:#e95420; --net:#2dd4bf; --state:#f0a500;
+    --txt:#e6edf3; --dim:#7d8899; --ok:#3fb950; --warn:#e3b341; --err:#ff7b72;
+    --run:#58a6ff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-size:13px;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+  code,.mono{font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace}
+
+  /* ---------- top bar ---------- */
+  header{padding:10px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:16px;
+    background:linear-gradient(100deg,#0e131c,#160f28 60%,#241010);flex-shrink:0}
+  header h1{margin:0;font-size:15px;white-space:nowrap}
+  header .sub{color:var(--dim);font-size:11px}
+  .phasepill{margin-left:auto;font-size:11px;font-weight:700;padding:5px 12px;border-radius:20px;border:1px solid var(--line);white-space:nowrap}
+  .phasepill.idle{color:var(--dim)}
+  .phasepill.tf{color:var(--tf2);border-color:var(--tf);background:rgba(165,104,224,.12)}
+  .phasepill.ans{color:var(--ans2);border-color:var(--ans);background:rgba(255,107,107,.12)}
+  .phasepill.done{color:var(--ok);border-color:var(--ok);background:rgba(63,185,80,.12)}
+
+  /* ---------- controls ---------- */
+  .controls{padding:9px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;
+    background:var(--panel);flex-shrink:0;flex-wrap:wrap}
+  .btn{background:var(--panel3);color:var(--txt);border:1px solid var(--line);border-radius:8px;
+    padding:7px 14px;cursor:pointer;font-size:12px;font-weight:600;transition:.14s;display:inline-flex;align-items:center;gap:6px}
+  .btn:hover{border-color:var(--run);background:#20293a}
+  .btn.primary{background:linear-gradient(90deg,var(--tf),var(--ans));color:#fff;border:none}
+  .btn.primary:hover{filter:brightness(1.12)}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .speeds{display:flex;gap:4px;margin-left:4px}
+  .speeds button{background:var(--panel2);border:1px solid var(--line);color:var(--dim);border-radius:6px;
+    padding:5px 9px;font-size:11px;cursor:pointer}
+  .speeds button.active{color:#fff;border-color:var(--run);background:#1a2740}
+  .prog{flex:1;min-width:160px;display:flex;align-items:center;gap:9px;margin-left:6px}
+  .bar{flex:1;height:7px;background:var(--panel3);border-radius:6px;overflow:hidden;position:relative;cursor:pointer}
+  .bar .fill{height:100%;width:0;background:linear-gradient(90deg,var(--tf),var(--net),var(--ans));transition:width .18s}
+  .counter{font-size:11px;color:var(--dim);white-space:nowrap;font-variant-numeric:tabular-nums}
+
+  /* ---------- main split ---------- */
+  .stage{flex:1;display:grid;grid-template-columns:320px 1fr 1fr;gap:1px;background:var(--line);overflow:hidden;min-height:0}
+  @media(max-width:1050px){.stage{grid-template-columns:1fr;overflow:auto}}
+  .pane{background:var(--bg);display:flex;flex-direction:column;min-height:0;overflow:hidden}
+  .pane-head{padding:8px 14px;font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
+    border-bottom:1px solid var(--line);color:var(--dim);background:var(--panel);flex-shrink:0;display:flex;align-items:center;gap:8px}
+  .pane-head .dotpulse{width:8px;height:8px;border-radius:50%;background:#333}
+  .pane-head .dotpulse.live{background:var(--run);animation:pulse 1s infinite}
+  @keyframes pulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(88,166,255,.5)}50%{opacity:.6;box-shadow:0 0 0 5px rgba(88,166,255,0)}}
+  .pane-body{flex:1;overflow-y:auto;padding:12px 14px}
+  .pane-body::-webkit-scrollbar{width:9px}.pane-body::-webkit-scrollbar-thumb{background:#243043;border-radius:5px}
+
+  /* ---------- left: hosts + graph ---------- */
+  .board h3{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.05em;margin:4px 0 8px}
+  .host{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:9px 11px;margin-bottom:8px;
+    display:flex;align-items:center;gap:10px;transition:.25s;position:relative;overflow:hidden}
+  .host .ic{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;flex-shrink:0}
+  .host.win .ic{background:rgba(61,184,255,.14);color:var(--win)}
+  .host.lin .ic{background:rgba(233,84,32,.14);color:var(--lin)}
+  .host .meta{flex:1;min-width:0}
+  .host .hn{font-weight:700;font-size:12.5px}
+  .host .hip{font-family:monospace;font-size:10px;color:#ffd479}
+  .host .st{font-size:9.5px;padding:2px 7px;border-radius:10px;border:1px solid var(--line);color:var(--dim);white-space:nowrap}
+  .host[data-state="pending"]{opacity:.5}
+  .host[data-state="provisioning"]{border-color:var(--tf);box-shadow:0 0 0 1px var(--tf) inset}
+  .host[data-state="provisioning"] .st{color:var(--tf2);border-color:var(--tf)}
+  .host[data-state="booting"]{border-color:var(--warn)}
+  .host[data-state="booting"] .st{color:var(--warn);border-color:var(--warn)}
+  .host[data-state="ready"]{border-color:var(--net)}
+  .host[data-state="ready"] .st{color:var(--net);border-color:var(--net)}
+  .host[data-state="configuring"]{border-color:var(--ans);box-shadow:0 0 0 1px var(--ans) inset}
+  .host[data-state="configuring"] .st{color:var(--ans2);border-color:var(--ans)}
+  .host[data-state="rebooting"]{border-color:var(--warn);animation:blink 1s infinite}
+  .host[data-state="rebooting"] .st{color:var(--warn);border-color:var(--warn)}
+  @keyframes blink{50%{opacity:.55}}
+  .host[data-state="done"]{border-color:var(--ok)}
+  .host[data-state="done"] .st{color:var(--ok);border-color:var(--ok)}
+  .host .sweep{position:absolute;inset:0;pointer-events:none;opacity:0}
+  .host.active .sweep{opacity:1;background:linear-gradient(90deg,transparent,rgba(88,166,255,.12),transparent);
+    animation:sweep 1.1s linear infinite}
+  @keyframes sweep{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+
+  .stagelist{margin-top:14px}
+  .sitem{display:flex;align-items:center;gap:8px;font-size:11px;padding:5px 7px;border-radius:7px;color:var(--dim);border:1px solid transparent}
+  .sitem .num{font-family:monospace;font-size:9.5px;width:34px;text-align:center;padding:1px 0;border-radius:5px;background:var(--panel3);border:1px solid var(--line);flex-shrink:0}
+  .sitem.cur{color:var(--txt);background:var(--panel2);border-color:var(--run)}
+  .sitem.cur .num{background:#1a2740;border-color:var(--run);color:var(--run)}
+  .sitem.past{color:var(--dim)}.sitem.past .num{color:var(--ok);border-color:var(--ok)}
+  .sitem .chk{margin-left:auto;font-size:11px;opacity:0}.sitem.past .chk{opacity:1;color:var(--ok)}
+
+  /* ---------- center: terminal stream ---------- */
+  .term{font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-size:12px;line-height:1.65}
+  .tline{white-space:pre-wrap;word-break:break-word;padding:1px 0;opacity:0;transform:translateY(3px);
+    animation:in .22s forwards}
+  @keyframes in{to{opacity:1;transform:none}}
+  .tline .prompt{color:var(--ok)}
+  .tline.cmd{color:#fff;font-weight:600}
+  .tline.tf{color:var(--tf2)}
+  .tline.ans-play{color:var(--ans2);font-weight:600;margin-top:6px}
+  .tline.task{color:var(--txt)}
+  .tline.task::before{content:"TASK ";color:var(--dim);font-size:10px}
+  .tline.ok::before{content:"✔ ";color:var(--ok)}
+  .tline.ok{color:var(--ok)}
+  .tline.changed::before{content:"~ ";color:var(--warn)}
+  .tline.changed{color:var(--warn)}
+  .tline.api::before{content:"→ AWS ";color:var(--aws);font-size:10px}
+  .tline.api{color:#ffcf87}
+  .tline.reboot{color:var(--warn)}.tline.reboot::before{content:"↻ ";color:var(--warn)}
+  .tline.info{color:var(--dim)}
+  .tline.result{color:var(--net)}.tline.result::before{content:"◀ ";color:var(--net)}
+  .tline.hdr{color:var(--run);border-top:1px dashed #243043;margin-top:9px;padding-top:7px;font-weight:700}
+  .tline.done{color:var(--ok);font-weight:700}
+  .caret{display:inline-block;width:8px;height:14px;background:var(--run);vertical-align:middle;animation:blink .9s step-end infinite;margin-left:2px}
+
+  /* ---------- right: background mechanics ---------- */
+  .bg-card{background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:0;overflow:hidden;
+    animation:in .25s forwards}
+  .bg-card .bh{padding:9px 13px;font-size:11px;font-weight:700;display:flex;align-items:center;gap:8px;
+    border-bottom:1px solid var(--line);background:var(--panel3)}
+  .bg-card .bh .tagx{font-size:9px;padding:2px 7px;border-radius:5px;border:1px solid var(--line);margin-left:auto;color:var(--dim)}
+  .bg-card .bb{padding:11px 13px}
+  .bg-card .bb p{margin:0 0 8px;font-size:11.5px;color:var(--dim);line-height:1.55}
+  .bg-card .bb p:last-child{margin-bottom:0}
+  .bg-card .bb b{color:var(--txt)}
+  .bg-card .bb .k{color:#79c0ff;font-family:monospace}
+  .bg-card .bb .v{color:#ffa657;font-family:monospace}
+  .bg-card .bb .danger{color:var(--err);font-family:monospace}
+  .flow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:9px 0 3px}
+  .node{font-size:10px;padding:4px 9px;border-radius:7px;border:1px solid var(--line);background:var(--panel);white-space:nowrap}
+  .node.a{color:var(--tf2);border-color:var(--tf)}.node.b{color:var(--aws);border-color:var(--aws)}
+  .node.c{color:var(--win);border-color:var(--win)}.node.d{color:var(--ans2);border-color:var(--ans)}
+  .node.e{color:var(--net);border-color:var(--net)}.node.f{color:var(--lin);border-color:var(--lin)}
+  .fa{color:var(--net);font-size:13px}
+  .empty{color:var(--dim);font-size:12px;text-align:center;padding:40px 20px;font-style:italic}
+
+  .handoff-flash{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:100;opacity:0}
+  .handoff-flash.show{animation:flash 2.2s ease}
+  .handoff-flash .box{background:linear-gradient(90deg,rgba(165,104,224,.95),rgba(45,212,191,.9),rgba(255,107,107,.95));
+    color:#fff;padding:22px 40px;border-radius:16px;font-size:18px;font-weight:800;box-shadow:0 10px 60px rgba(0,0,0,.6);text-align:center}
+  .handoff-flash .box small{display:block;font-size:12px;font-weight:500;margin-top:6px;opacity:.9}
+  @keyframes flash{0%{opacity:0;transform:scale(.85)}15%{opacity:1;transform:scale(1)}80%{opacity:1}100%{opacity:0;transform:scale(1.05)}}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>▶ Live Build Player</h1>
+  <span class="sub">streaming <code>terraform apply</code> → <code>ansible-playbook site.yml</code> with parallel background mechanics · nothing is executed, this is a simulated replay from the repo code</span>
+  <span id="phasepill" class="phasepill idle">IDLE</span>
+</header>
+
+<div class="controls">
+  <button id="btnPlay" class="btn primary" onclick="play()">▶ Run build</button>
+  <button id="btnPause" class="btn" onclick="pause()" disabled>⏸ Pause</button>
+  <button id="btnStep" class="btn" onclick="step()">⏭ Step</button>
+  <button id="btnReset" class="btn" onclick="resetAll()">⟲ Reset</button>
+  <div class="speeds">
+    <button data-sp="1600" onclick="setSpeed(1600,this)">0.5×</button>
+    <button data-sp="800" class="active" onclick="setSpeed(800,this)">1×</button>
+    <button data-sp="380" onclick="setSpeed(380,this)">2×</button>
+    <button data-sp="120" onclick="setSpeed(120,this)">5×</button>
+  </div>
+  <div class="prog">
+    <div class="bar" id="bar" onclick="seek(event)"><div class="fill" id="fill"></div></div>
+    <span class="counter" id="counter">0 / 0</span>
+  </div>
+</div>
+
+<div class="stage">
+  <!-- LEFT: state board -->
+  <div class="pane">
+    <div class="pane-head">Infrastructure state <span id="clock" style="margin-left:auto;font-family:monospace;color:var(--dim)">t+00:00</span></div>
+    <div class="pane-body board">
+      <h3>Hosts (AWS)</h3>
+      <div class="host win" id="h-dc01" data-state="pending"><div class="ic">DC</div>
+        <div class="meta"><div class="hn">dc01</div><div class="hip">10.10.10.10 · DC+DNS</div></div>
+        <span class="st">pending</span><div class="sweep"></div></div>
+      <div class="host win" id="h-srv01" data-state="pending"><div class="ic">SR</div>
+        <div class="meta"><div class="hn">srv01</div><div class="hip">10.10.10.20 · ADCS+SMB</div></div>
+        <span class="st">pending</span><div class="sweep"></div></div>
+      <div class="host win" id="h-ws01" data-state="pending"><div class="ic">WS</div>
+        <div class="meta"><div class="hn">ws01</div><div class="hip">10.10.10.30 · workstation</div></div>
+        <span class="st">pending</span><div class="sweep"></div></div>
+      <div class="host lin" id="h-pivot" data-state="pending"><div class="ic">PV</div>
+        <div class="meta"><div class="hn">pivot</div><div class="hip">10.10.10.5 · attacker</div></div>
+        <span class="st">pending</span><div class="sweep"></div></div>
+
+      <div class="stagelist">
+        <h3>Pipeline</h3>
+        <div id="stagelist"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CENTER: terminal -->
+  <div class="pane">
+    <div class="pane-head"><span class="dotpulse" id="termdot"></span> Command stream <span style="margin-left:auto;color:var(--dim);text-transform:none;letter-spacing:0">control node (your Mac)</span></div>
+    <div class="pane-body term" id="term">
+      <div class="empty">Press <b>▶ Run build</b> to stream the sequence. Each line appears as it "executes"; the right panel shows the background mechanics in sync.</div>
+    </div>
+  </div>
+
+  <!-- RIGHT: background -->
+  <div class="pane">
+    <div class="pane-head"><span class="dotpulse" id="bgdot"></span> Behind the scenes <span style="margin-left:auto;color:var(--dim);text-transform:none;letter-spacing:0">what the wire/host is doing</span></div>
+    <div class="pane-body" id="bg">
+      <div class="empty">The granular mechanics — AWS API calls, WinRM/NTLM handshakes, module→PowerShell compilation, reboot/reconnect loops, state &amp; idempotency — appear here, synced to the current step.</div>
+    </div>
+  </div>
+</div>
+
+<div class="handoff-flash" id="handoff"><div class="box">🔗 CONTROL HANDOFF<small>Terraform wrote inventory/hosts.ini → Ansible takes over</small></div></div>
+
+<script>
+/* =====================================================================
+   EVENT MODEL
+   type: prompt|cmd|tf|api|task|ok|changed|reboot|result|info|hdr|ansplay|done|handoff
+   host: id to spotlight (optional)  · setState:[id,state] to update board
+   phase: idle|tf|ans|done  · stage: pipeline index (optional)
+   bg: {title, tag, body(html), flow:[{t,cls}]}  parallel background card
+   ===================================================================== */
+const PIPE = [
+  "tf: init/plan/apply","tf: network","tf: security","tf: instances","tf: handoff",
+  "01 DC promote","02 domain join","03 AD content","04 vulns","05 ADCS","06 flags","07 pivot","done"
+];
+
+const E = [
+ /* ---------- TERRAFORM ---------- */
+ {t:"prompt",term:"$ cd terraform && terraform init",phase:"tf",stage:0,
+   bg:{title:"terraform init",tag:"providers",body:"Downloads providers into <span class='k'>.terraform/</span>: <span class='v'>hashicorp/aws ~&gt;5.40</span>, <span class='v'>hashicorp/local ~&gt;2.4</span>. Reads backend + builds the resource dependency graph.",flow:[{t:"terraform",cls:"a"},{t:"registry.terraform.io",cls:"b"}]}},
+ {t:"info",term:"Terraform has been successfully initialized."},
+ {t:"prompt",term:"$ terraform apply -auto-approve",phase:"tf",stage:0,
+   bg:{title:"terraform apply",tag:"state",body:"Compares desired state (<span class='k'>*.tf</span>) with <span class='v'>terraform.tfstate</span>. Empty state ⇒ everything is a create. Walks the graph in dependency order.",flow:[{t:"terraform",cls:"a"},{t:"plan diff",cls:"a"},{t:"AWS API",cls:"b"}]}},
+
+ {t:"tf",term:"data.aws_ami.windows: Reading...  data.aws_ami.ubuntu: Reading...",stage:0,
+   bg:{title:"Resolve AMIs at plan time",tag:"read-only",body:"<span class='k'>ec2:DescribeImages</span> filtered by name pattern. No hard-coded IDs — always the latest <span class='v'>Windows_Server-2022-Full-Base-*</span> and <span class='v'>ubuntu-jammy-22.04</span>.",flow:[{t:"terraform",cls:"a"},{t:"DescribeImages",cls:"b"},{t:"ami-ids ◀",cls:"e"}]}},
+ {t:"api",term:"aws_vpc.lab: Creating...           → 10.10.0.0/16",stage:1,phase:"tf",
+   bg:{title:"Network fabric (1/3)",tag:"CreateVpc",body:"Creates the VPC with <span class='k'>enable_dns_support</span> + <span class='k'>enable_dns_hostnames</span> = true. This is the private space the whole lab lives in.",flow:[{t:"CreateVpc",cls:"b"},{t:"vpc-id ◀",cls:"e"}]}},
+ {t:"api",term:"aws_internet_gateway.lab: Creating...   attaching to vpc",stage:1,
+   bg:{title:"Network fabric (2/3)",tag:"CreateIGW",body:"Graph knows the IGW must exist &amp; attach before any route can point at it. Terraform sequences <span class='k'>CreateInternetGateway</span> → <span class='k'>AttachInternetGateway</span> automatically.",flow:[{t:"CreateIGW",cls:"b"},{t:"AttachIGW",cls:"b"}]}},
+ {t:"api",term:"aws_subnet.lab: Creating...        → 10.10.10.0/24 (map_public_ip=true)",stage:1,
+   bg:{title:"Network fabric (3/3)",tag:"CreateSubnet",body:"Subnet is pinned to <span class='v'>10.10.10.0/24</span> so the static private IPs match Ansible's group_vars exactly. Route table + association added so 0.0.0.0/0 → IGW.",flow:[{t:"CreateSubnet",cls:"b"},{t:"CreateRouteTable",cls:"b"},{t:"Associate",cls:"b"}]}},
+ {t:"api",term:"aws_security_group.lab: Creating...  self-mesh + your IP only",stage:2,phase:"tf",
+   bg:{title:"Security group",tag:"Authorize×5",body:"<b>self=true</b> ⇒ all AD ports (DNS/LDAP/Kerberos/SMB/RPC) open only between lab hosts. Mgmt rules scoped to <span class='v'>var.operator_cidr</span>: <span class='k'>3389</span> RDP, <span class='k'>5985</span> WinRM, <span class='k'>22</span> SSH.",flow:[{t:"CreateSecurityGroup",cls:"b"},{t:"AuthorizeIngress ×4",cls:"b"},{t:"AuthorizeEgress",cls:"b"}]}},
+ {t:"api",term:"aws_key_pair.lab: Creating...        importing ~/.ssh/id_rsa.pub",stage:2,
+   bg:{title:"Key pair",tag:"ImportKeyPair",body:"Public key imported for the Linux pivot login (<span class='v'>ubuntu</span> user). Windows uses the password from user_data instead.",flow:[{t:"ImportKeyPair",cls:"b"}]}},
+
+ {t:"api",term:"aws_instance.windows[\"dc01\"]:  Creating...  t3.large  ip=10.10.10.10",stage:3,phase:"tf",host:"dc01",setState:["dc01","provisioning"],
+   bg:{title:"RunInstances — dc01",tag:"for_each",body:"One resource block loops the map {dc01,srv01,[ws01]}. Each: <span class='k'>ami=win</span>, <span class='k'>t3.large</span>, static private IP, <span class='k'>IMDSv2 required</span>, gp3 50GB, and crucially <span class='k'>user_data</span> = the first-boot PowerShell.",flow:[{t:"RunInstances",cls:"b"},{t:"user_data attached",cls:"c"}]}},
+ {t:"api",term:"aws_instance.windows[\"srv01\"]: Creating...  t3.large  ip=10.10.10.20",stage:3,host:"srv01",setState:["srv01","provisioning"],
+   bg:{title:"RunInstances — srv01",tag:"parallel",body:"Terraform creates independent resources concurrently. srv01 will later host the ADCS CA and the SMB loot shares.",flow:[{t:"RunInstances",cls:"b"}]}},
+ {t:"api",term:"aws_instance.windows[\"ws01\"]:  Creating...  t3.medium ip=10.10.10.30",stage:3,host:"ws01",setState:["ws01","provisioning"],
+   bg:{title:"RunInstances — ws01",tag:"conditional",body:"Only created when <span class='v'>enable_ws01=true</span>. Set it false to drop the workstation and save cost.",flow:[{t:"RunInstances",cls:"b"}]}},
+ {t:"api",term:"aws_instance.pivot: Creating...          t3.small  ip=10.10.10.5",stage:3,host:"pivot",setState:["pivot","provisioning"],
+   bg:{title:"RunInstances — pivot",tag:"Ubuntu",body:"Ubuntu 22.04, gp3 20GB, IMDSv2. Has internet egress via the IGW so Ansible can pip-install offensive tooling later.",flow:[{t:"RunInstances",cls:"b"},{t:"SSH via key",cls:"f"}]}},
+ {t:"result",term:"aws_instance.*: Still creating... [30s] → running; public IPs assigned",stage:3,
+   setStateMulti:[["dc01","booting"],["srv01","booting"],["ws01","booting"],["pivot","ready"]],
+   bg:{title:"Instances reach 'running'",tag:"poll",body:"Terraform polls to <span class='v'>running</span> then reads <span class='k'>public_ip</span>. It does <b>NOT</b> wait for the guest OS / user_data to finish — that's why we sleep ~5 min before Ansible.",flow:[{t:"DescribeInstances (poll)",cls:"b"},{t:"public_ip ◀",cls:"e"}]}},
+
+ {t:"reboot",term:"[dc01/srv01/ws01] EC2Launch running user_data (as SYSTEM)…",phase:"tf",
+   bg:{title:"First-boot bootstrap",tag:"user_data",body:"On each Windows host: <span class='k'>net user Administrator</span> (known pw) · <span class='k'>Rename-Computer</span> · <span class='k'>Enable-PSRemoting</span> · harden WinRM (<span class='v'>AllowUnencrypted=false, Negotiate=true, Basic=false</span>) · open <span class='k'>5985</span> · <span class='danger'>Restart-Computer -Force</span>.",flow:[{t:"EC2Launch",cls:"b"},{t:"WinRM up",cls:"c"},{t:"reboot",cls:"c"}]}},
+ {t:"result",term:"[dc01/srv01/ws01] rebooted → WinRM 5985 listening (NTLM, encrypted)",
+   setStateMulti:[["dc01","ready"],["srv01","ready"],["ws01","ready"]],
+   bg:{title:"Hosts now reachable",tag:"ready",body:"The rename takes effect after reboot and WinRM is live. This is the cloud replacement for a pre-baked Vagrant box.",flow:[{t:"5985 open",cls:"c"},{t:"Administrator login ready",cls:"c"}]}},
+
+ {t:"tf",term:"local_file.inventory: Creating...   → ../inventory/hosts.ini",stage:4,phase:"tf",
+   bg:{title:"THE HANDOFF FILE",tag:"local_file",body:"Terraform's final resource renders <span class='v'>inventory/hosts.ini</span> from live public IPs: groups <span class='k'>[domain_controllers]</span>, <span class='k'>[domain_members]</span>, <span class='k'>[linux_pivot]</span>, plus <span class='k'>[windows:children]</span>/<span class='k'>[lab:children]</span>. Private IPs stay fixed so domain vars never change.",flow:[{t:"render template",cls:"a"},{t:"write hosts.ini",cls:"e"}]}},
+ {t:"info",term:"Apply complete! Resources: 14 added, 0 changed, 0 destroyed.",
+   bg:{title:"State written",tag:"tfstate",body:"<span class='v'>terraform.tfstate</span> now records every resource ID. Re-running apply would be a no-op; <span class='k'>terraform destroy</span> removes exactly this set.",flow:[{t:"terraform.tfstate ◀",cls:"e"}]}},
+ {t:"handoff",term:"── control handoff: Terraform → Ansible ──",phase:"tf"},
+
+ /* ---------- CONNECTIVITY ---------- */
+ {t:"prompt",term:"$ sleep 300   # wait for first-boot; then verify",phase:"ans",
+   bg:{title:"Why the wait",tag:"timing",body:"user_data runs asynchronously after 'running'. We pause so the rename+reboot completes before Ansible authenticates.",flow:[{t:"~5 min",cls:"e"}]}},
+ {t:"prompt",term:"$ ansible windows -m ansible.windows.win_ping",phase:"ans",
+   bg:{title:"WinRM smoke test",tag:"NTLM",body:"Confirms transport before the real run. <span class='k'>win_ping</span> opens a WSMan shell over <span class='v'>5985</span>, authenticates via NTLM (message-level encryption), returns <span class='v'>pong</span>.",flow:[{t:"ansible",cls:"d"},{t:"NTLM auth",cls:"c"},{t:"pong ◀",cls:"e"}]}},
+ {t:"ok",term:"dc01 | SUCCESS => pong    srv01 | SUCCESS => pong    ws01 | SUCCESS => pong"},
+ {t:"prompt",term:"$ ansible-playbook site.yml",phase:"ans",
+   bg:{title:"site.yml",tag:"orchestrate",body:"Imports 7 staged playbooks in strict dependency order. Reads <span class='v'>ansible.cfg</span> (forks=8, yaml callback, pipelining) + <span class='v'>group_vars/*</span>. Runs top-to-bottom, host groups in parallel.",flow:[{t:"import 01→07",cls:"d"}]}},
+
+ /* ---------- STAGE 01 ---------- */
+ {t:"ansplay",term:"PLAY [Provision the Domain Controller] ***",stage:5,phase:"ans",host:"dc01",setState:["dc01","configuring"]},
+ {t:"task",term:"[common_win : win_dns_client] dns → 10.10.10.10",stage:5,host:"dc01",
+   bg:{title:"module → PowerShell → WinRM",tag:"how a task runs",body:"Ansible <b>compiles</b> the module to a PowerShell payload, ships it over WSMan, runs it, parses JSON back. <span class='k'>win_dns_client</span> points the NIC at the DC so AD name resolution works.",flow:[{t:"compile module",cls:"d"},{t:"WSMan ship",cls:"c"},{t:"{changed} ◀",cls:"e"}]}},
+ {t:"changed",term:"[common_win : win_timezone/win_service/win_firewall/win_regedit] baseline",stage:5,host:"dc01",
+   bg:{title:"Baseline (lab conveniences)",tag:"idempotent",body:"UTC clock (Kerberos skew guard) · w32time running · Defender realtime off · firewall off (all profiles) · RDP enabled. Toggled by <span class='v'>common_win_*</span> defaults.",flow:[{t:"check state",cls:"d"},{t:"act if drift",cls:"c"}]}},
+ {t:"changed",term:"[domain_controller : win_feature] AD-Domain-Services + RSAT",stage:5,host:"dc01",
+   bg:{title:"Install AD DS role",tag:"win_feature",body:"Installs AD DS + management tools. Idempotent: reports <span class='v'>changed=false</span> if already present.",flow:[{t:"Install-WindowsFeature",cls:"c"}]}},
+ {t:"changed",term:"[domain_controller : microsoft.ad.domain] create forest vuln.local (VULN)",stage:5,host:"dc01",setState:["dc01","rebooting"],
+   bg:{title:"Promote to first DC",tag:"reboot=true",body:"<span class='k'>microsoft.ad.domain</span> creates the new forest, sets DSRM (safe-mode) password, installs DNS, then <b>reboots the host and reconnects WinRM</b> for you — the promote dance you'd babysit manually.",flow:[{t:"dcpromo",cls:"c"},{t:"reboot",cls:"c"},{t:"reconnect WinRM",cls:"e"}]}},
+ {t:"reboot",term:"[dc01] rebooting after promotion… reconnecting…",host:"dc01",
+   bg:{title:"Reboot + reconnect",tag:"handled",body:"Ansible waits (<span class='v'>reboot_timeout</span>) for the host to come back and WSMan to answer before the next task. No manual re-login.",flow:[{t:"wait for host",cls:"e"}]}},
+ {t:"ok",term:"[domain_controller : Get-ADDomain] until succeeded (retries=30 delay=20) → vuln.local",host:"dc01",setState:["dc01","ready"],
+   bg:{title:"Block until AD is live",tag:"until/retries",body:"A retry loop polls <span class='k'>Get-ADDomain</span> until LDAP/ADWS answer. Guarantees downstream stages (join, content) only run once the directory is actually serving.",flow:[{t:"poll LDAP",cls:"c"},{t:"ready ◀",cls:"e"}]}},
+
+ /* ---------- STAGE 02 ---------- */
+ {t:"ansplay",term:"PLAY [Join member hosts to the domain] ***",stage:6,phase:"ans",setStateMulti:[["srv01","configuring"],["ws01","configuring"]]},
+ {t:"task",term:"[domain_member : win_shell] Resolve-DnsName vuln.local (until ok, 30×15s)",stage:6,host:"srv01",
+   bg:{title:"Wait for DC DNS",tag:"gate",body:"Members must resolve the domain via <span class='v'>10.10.10.10</span> before joining. common_win set their DNS; this loop waits until it answers.",flow:[{t:"Resolve-DnsName",cls:"c"},{t:"ok ◀",cls:"e"}]}},
+ {t:"changed",term:"[domain_member : microsoft.ad.membership] join vuln.local + reboot  (srv01, ws01)",stage:6,setStateMulti:[["srv01","rebooting"],["ws01","rebooting"]],
+   bg:{title:"Join the domain",tag:"parallel×2",body:"Both members processed together (forks=8). <span class='k'>microsoft.ad.membership</span> joins with VULN\\Administrator and reboots each, reconnecting after.",flow:[{t:"NetJoinDomain",cls:"c"},{t:"reboot ×2",cls:"c"}]}},
+ {t:"ok",term:"[domain_member] confirmed: srv01 & ws01 joined to vuln.local",setStateMulti:[["srv01","ready"],["ws01","ready"]],
+   bg:{title:"Membership confirmed",tag:"verify",body:"<span class='k'>(Get-CimInstance Win32_ComputerSystem).Domain</span> returns vuln.local on each member.",flow:[{t:"CIM query",cls:"c"},{t:"vuln.local ◀",cls:"e"}]}},
+
+ /* ---------- STAGE 03 ---------- */
+ {t:"ansplay",term:"PLAY [Populate Active Directory content] ***",stage:7,phase:"ans",host:"dc01",setState:["dc01","configuring"],
+   bg:{title:"Single source of truth",tag:"group_vars/all.yml",body:"Every OU, group, user, password, SPN, ACL and flag string is declared once in <span class='v'>all.yml</span>. Roles loop over that data — edit the file, re-run, done.",flow:[{t:"all.yml",cls:"e"},{t:"ad_content role",cls:"d"}]}},
+ {t:"changed",term:"[ad_content : microsoft.ad.ou] ×5  Staff, ServiceAccounts, Groups, Servers, Workstations",stage:7,host:"dc01",
+   bg:{title:"Create OUs",tag:"loop",body:"Idempotent create of the 5 organizational units that structure the directory.",flow:[{t:"New-ADOrganizationalUnit ×5",cls:"c"}]}},
+ {t:"changed",term:"[ad_content : microsoft.ad.group] ×3  IT Support, Service Accounts, IT Admins",stage:7,host:"dc01",
+   bg:{title:"Create groups",tag:"security/global",body:"<b>IT Admins</b> is the crown-jewel group — it will receive DCSync rights in stage 04. All security/global scope.",flow:[{t:"New-ADGroup ×3",cls:"c"}]}},
+ {t:"changed",term:"[ad_content : microsoft.ad.user] ×4  helpdesk, svc_mssql, svc_backup, trent.admin",stage:7,host:"dc01",
+   bg:{title:"Create users (weak by design)",tag:"no_log",body:"<span class='v'>svc_mssql</span>:Summer2024 &amp; <span class='v'>svc_backup</span>:Backup2023 are deliberately crackable. <span class='v'>trent.admin</span> is strong (not meant to fall). password_never_expires.",flow:[{t:"New-ADUser ×4",cls:"c"},{t:"add to groups",cls:"c"}]}},
+
+ /* ---------- STAGE 04 ---------- */
+ {t:"ansplay",term:"PLAY [Plant Active Directory vulnerabilities] ***",stage:8,phase:"ans",host:"dc01",
+   bg:{title:"The attack chain — planted",tag:"3 roles",body:"kerberoast → asrep → acl_dcsync. These misconfigs are the entire point of the lab.",flow:[{t:"vuln_kerberoast",cls:"d"},{t:"vuln_asrep",cls:"d"},{t:"vuln_acl_dcsync",cls:"d"}]}},
+ {t:"changed",term:"[vuln_kerberoast : microsoft.ad.user] set SPN MSSQLSvc/srv01.vuln.local:1433 on svc_mssql",stage:8,host:"dc01",
+   bg:{title:"Stage 1 — Kerberoast",tag:"SPN",body:"Registering an SPN makes svc_mssql Kerberoastable: any authenticated user can request a TGS for it and crack the weak password offline.",flow:[{t:"setspn",cls:"c"},{t:"→ Kerberoastable",cls:"d"}]}},
+ {t:"changed",term:"[vuln_asrep : Set-ADAccountControl] svc_backup -DoesNotRequirePreAuth $true",stage:8,host:"dc01",
+   bg:{title:"Stage 1b — AS-REP roast",tag:"no pre-auth",body:"Disabling Kerberos pre-auth lets an attacker request svc_backup's AS-REP <b>without</b> creds and crack it offline (GetNPUsers).",flow:[{t:"UAC bit set",cls:"c"},{t:"→ AS-REP roastable",cls:"d"}]}},
+ {t:"changed",term:"[vuln_acl_dcsync : dsacls] svc_mssql:GA over 'IT Admins'  +  IT Admins:CA replication on domain",stage:8,host:"dc01",
+   bg:{title:"Stage 2&3 — ACL → DCSync",tag:"dsacls",body:"<b>GenericAll</b> on the IT Admins group ⇒ cracking svc_mssql lets you add yourself to it. <b>IT Admins</b> then holds <span class='danger'>Replicating Directory Changes (All)</span> on the domain head ⇒ DCSync ⇒ dump krbtgt.",flow:[{t:"dsacls /G :GA",cls:"c"},{t:"dsacls /G :CA repl",cls:"c"},{t:"→ DCSync path",cls:"d"}]}},
+
+ /* ---------- STAGE 05 ---------- */
+ {t:"ansplay",term:"PLAY [Install ADCS and plant the ESC1 chain] ***",stage:9,phase:"ans",host:"srv01",setState:["srv01","configuring"]},
+ {t:"changed",term:"[adcs_ca : Install-AdcsCertificationAuthority] EnterpriseRootCA 'VULN-Root-CA'",stage:9,host:"srv01",
+   bg:{title:"Enterprise Root CA",tag:"certsvc",body:"Installs AD CS + web enrollment on srv01, configures an Enterprise Root CA (2048/SHA256/5y), starts <span class='k'>certsvc</span>. This is the platform ESC1 abuses.",flow:[{t:"win_feature AD-CS",cls:"c"},{t:"Install-AdcsCA",cls:"c"}]}},
+ {t:"changed",term:"[vuln_adcs_esc1 : win_shell] create template VulnUserESC1 (ADSI)",stage:9,host:"srv01",
+   bg:{title:"Bonus — ESC1 template",tag:"msPKI flags",body:"ADSI clones 'User' then sets the vulnerable bits: <span class='danger'>msPKI-Certificate-Name-Flag=0x1</span> (ENROLLEE_SUPPLIES_SUBJECT/SAN), enrollment-flag=0 (no approval), RA-signature=0, EKU <span class='danger'>1.3.6.1.5.5.7.3.2</span> (Client Auth). Grants Enroll+AutoEnroll to <span class='v'>Domain Users</span>.",flow:[{t:"ADSI create",cls:"c"},{t:"grant enroll",cls:"c"}]}},
+ {t:"ok",term:"[vuln_adcs_esc1] pause 10s (AD replicate) → Add-CATemplate (until published, 5×10s) → published",stage:9,host:"srv01",setState:["srv01","ready"],
+   bg:{title:"Publish on the CA",tag:"until",body:"A brief pause lets the new template object replicate, then it's published/issued on the CA. Retry loop handles replication lag.",flow:[{t:"Add-CATemplate",cls:"c"},{t:"published ◀",cls:"e"}]}},
+
+ /* ---------- STAGE 06 ---------- */
+ {t:"ansplay",term:"PLAY [Plant SRV01 loot shares] + [DC domain-compromise flag] ***",stage:10,phase:"ans",setStateMulti:[["srv01","configuring"],["dc01","configuring"]]},
+ {t:"changed",term:"[flags : win_file/win_template] flags → C:\\Shares\\{mssql_backups,backups,itadmin}, C:\\Flags",stage:10,host:"srv01",
+   bg:{title:"Plant flags",tag:"gated",body:"Each flag file carries the flag + a hint to the next stage. Written on srv01 (4) and dc01 (1, domain_pwned.txt).",flow:[{t:"create dirs",cls:"c"},{t:"write flags",cls:"c"}]}},
+ {t:"changed",term:"[flags : icacls] break inheritance → grant SYSTEM/Admins + only intended principal:R",stage:10,host:"srv01",
+   bg:{title:"Lock NTFS ACLs",tag:"icacls",body:"<span class='k'>/inheritance:r</span> then grant only SYSTEM, Administrators, and the one principal each stage yields (svc_mssql / svc_backup / IT Admins / Domain Admins). The flag proves you obtained that identity.",flow:[{t:"icacls /grant:r",cls:"c"}]}},
+ {t:"changed",term:"[flags : New-SmbShare] mssql_backups$  backups$  itadmin$  (Read for principal)",stage:10,setStateMulti:[["srv01","ready"],["dc01","ready"]],
+   bg:{title:"Publish SMB shares",tag:"share ACLs",body:"Loot exposed over SMB with matching share permissions — how an attacker would actually reach it from the pivot.",flow:[{t:"New-SmbShare",cls:"c"},{t:"Grant-SmbShareAccess",cls:"c"}]}},
+
+ /* ---------- STAGE 07 ---------- */
+ {t:"ansplay",term:"PLAY [Configure the Linux pivot box] ***",stage:11,phase:"ans",host:"pivot",setState:["pivot","configuring"],
+   bg:{title:"Pivot over SSH",tag:"connection: ssh",body:"Switches transport: SSH + become to the Ubuntu box. gather_facts=true here.",flow:[{t:"SSH",cls:"f"},{t:"sudo become",cls:"f"}]}},
+ {t:"changed",term:"[linux_pivot : apt/pip] impacket, bloodhound, certipy-ad → /opt/offsec-venv (best effort)",stage:11,host:"pivot",
+   bg:{title:"Install tooling",tag:"best effort",body:"apt: python3/pip/venv/git/ldap-utils/dnsutils/nmap/curl/jq. pip into a venv: impacket, bloodhound, certipy-ad. <span class='k'>failed_when:false</span> tolerates offline builds.",flow:[{t:"apt",cls:"f"},{t:"pip venv",cls:"f"}]}},
+ {t:"changed",term:"[linux_pivot : copy] resolved.conf.d/vuln-lab.conf  DNS=10.10.10.10",stage:11,host:"pivot",
+   bg:{title:"Point DNS at the DC",tag:"resolved",body:"Drop-in makes vuln.local resolvable from the pivot, then restarts systemd-resolved.",flow:[{t:"write drop-in",cls:"f"},{t:"restart resolved",cls:"f"}]}},
+ {t:"ok",term:"[linux_pivot : template] ~/notes/creds.txt  (helpdesk:Helpdesk#123 + Stage-0 flag)",stage:11,host:"pivot",setState:["pivot","done"],
+   bg:{title:"Stage-0 foothold dropped",tag:"the start line",body:"creds.txt leaks the intended entry credential + <span class='v'>FLAG{...stage0}</span>, plus a README with targets. This is where an attacker begins the chain.",flow:[{t:"creds.txt 0600",cls:"f"},{t:"README",cls:"f"}]}},
+
+ /* ---------- DONE ---------- */
+ {t:"done",term:"PLAY RECAP — dc01/srv01/ws01/pivot : ok, changed, failed=0",phase:"done",stage:12,
+   setStateMulti:[["dc01","done"],["srv01","done"],["ws01","done"],["pivot","done"]],
+   bg:{title:"Lab is live",tag:"complete",body:"Two commands built everything: <span class='k'>terraform apply</span> (infra + handoff file) then <span class='k'>ansible-playbook site.yml</span> (domain, vulns, ADCS, flags, pivot). Re-run safely (idempotent) or <span class='k'>make reset-soft</span> to re-plant. Start the attack at <span class='v'>~/notes/creds.txt</span> on the pivot.",flow:[{t:"infra ✔",cls:"a"},{t:"config ✔",cls:"d"},{t:"attack chain ✔",cls:"e"}]}},
+];
+
+/* =====================================================================
+   PLAYER ENGINE
+   ===================================================================== */
+let idx=0, timer=null, speed=800, playing=false, t0=0, elapsed=0;
+const term=document.getElementById('term'), bg=document.getElementById('bg');
+const fill=document.getElementById('fill'), counter=document.getElementById('counter');
+const phasepill=document.getElementById('phasepill'), clock=document.getElementById('clock');
+const stagelistEl=document.getElementById('stagelist');
+let curPhase="idle";
+
+// build pipeline list
+PIPE.forEach((p,i)=>{
+  const d=document.createElement('div'); d.className='sitem'; d.id='pl-'+i;
+  d.innerHTML=`<span class="num">${p.split(':')[0].split(' ')[0]}</span><span>${p.replace(/^[^:]*:\s*/,'').replace(/^\d+\s/,'')}</span><span class="chk">✔</span>`;
+  stagelistEl.appendChild(d);
+});
+
+function setPhase(p){
+  if(!p||p===curPhase) return; curPhase=p;
+  phasepill.className='phasepill '+p;
+  phasepill.textContent={idle:'IDLE',tf:'● TERRAFORM · provisioning',ans:'● ANSIBLE · configuring',done:'✔ BUILD COMPLETE'}[p];
+}
+function setHostState(id,st){
+  const el=document.getElementById('h-'+id); if(!el) return;
+  el.dataset.state=st; el.querySelector('.st').textContent=st;
+}
+function spotlight(id){
+  document.querySelectorAll('.host').forEach(h=>h.classList.remove('active'));
+  if(id){const el=document.getElementById('h-'+id); if(el) el.classList.add('active');}
+}
+function markStage(s){
+  if(s==null) return;
+  document.querySelectorAll('.sitem').forEach((el,i)=>{
+    el.classList.remove('cur');
+    if(i<s) el.classList.add('past');
+    if(i===s){el.classList.add('cur'); el.scrollIntoView({block:'nearest'});}
+  });
+}
+function renderBG(b){
+  if(!b) return;
+  let flow=''; if(b.flow){flow='<div class="flow">'+b.flow.map((n,i)=>
+    `${i?'<span class="fa">→</span>':''}<span class="node ${n.cls}">${n.t}</span>`).join('')+'</div>';}
+  bg.innerHTML=`<div class="bg-card"><div class="bh">${b.title}<span class="tagx">${b.tag||''}</span></div>`
+    +`<div class="bb"><p>${b.body}</p>${flow}</div></div>`;
+}
+function emit(e){
+  // terminal line
+  if(term.querySelector('.empty')) term.innerHTML='';
+  const ln=document.createElement('div');
+  const map={prompt:'cmd',cmd:'cmd',tf:'tf',api:'api',task:'task',ok:'ok',changed:'changed',
+    reboot:'reboot',result:'result',info:'info',hdr:'hdr',ansplay:'ans-play',done:'done',handoff:'hdr'};
+  ln.className='tline '+(map[e.t]||'info');
+  if(e.t==='prompt'||e.t==='cmd'){ln.innerHTML='<span class="prompt">'+e.term.slice(0,1)+'</span>'+escapeHtml(e.term.slice(1));}
+  else ln.textContent=e.term;
+  term.appendChild(ln);
+  term.scrollTop=term.scrollHeight;
+  // side effects
+  if(e.phase) setPhase(e.phase);
+  if(e.setState) setHostState(e.setState[0],e.setState[1]);
+  if(e.setStateMulti) e.setStateMulti.forEach(s=>setHostState(s[0],s[1]));
+  if('host' in e) spotlight(e.host); 
+  if(e.stage!=null) markStage(e.stage);
+  if(e.bg) renderBG(e.bg);
+  if(e.t==='handoff') flashHandoff();
+}
+function escapeHtml(s){return s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+
+function flashHandoff(){
+  const h=document.getElementById('handoff'); h.classList.remove('show'); void h.offsetWidth; h.classList.add('show');
+}
+function updateProg(){
+  fill.style.width=(idx/E.length*100)+'%';
+  counter.textContent=idx+' / '+E.length;
+}
+function tickClock(){
+  if(!playing) return;
+  elapsed=Math.floor((Date.now()-t0)/1000);
+  const m=String(Math.floor(elapsed/60)).padStart(2,'0'), s=String(elapsed%60).padStart(2,'0');
+  clock.textContent='t+'+m+':'+s;
+}
+setInterval(tickClock,500);
+
+function step(){
+  if(idx>=E.length){finish();return;}
+  emit(E[idx]); idx++; updateProg();
+  if(idx>=E.length) finish();
+}
+function play(){
+  if(idx>=E.length) resetAll();
+  playing=true; if(!t0) t0=Date.now()-elapsed*1000;
+  document.getElementById('btnPlay').disabled=true;
+  document.getElementById('btnPause').disabled=false;
+  document.getElementById('termdot').classList.add('live');
+  document.getElementById('bgdot').classList.add('live');
+  clearInterval(timer);
+  timer=setInterval(()=>{ if(idx>=E.length){finish();return;} step(); },speed);
+}
+function pause(){
+  playing=false; clearInterval(timer);
+  document.getElementById('btnPlay').disabled=false;
+  document.getElementById('btnPause').disabled=true;
+  document.getElementById('termdot').classList.remove('live');
+  document.getElementById('bgdot').classList.remove('live');
+}
+function finish(){
+  pause();
+  document.getElementById('btnPlay').disabled=true;
+  spotlight(null);
+}
+function setSpeed(sp,btn){
+  speed=sp;
+  document.querySelectorAll('.speeds button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  if(playing){clearInterval(timer);timer=setInterval(()=>{if(idx>=E.length){finish();return;}step();},speed);}
+}
+function seek(ev){
+  const bar=document.getElementById('bar');
+  const pct=(ev.clientX-bar.getBoundingClientRect().left)/bar.offsetWidth;
+  const target=Math.max(0,Math.min(E.length,Math.round(pct*E.length)));
+  // rebuild fast up to target
+  const wasPlaying=playing; pause(); rebuildTo(target); if(wasPlaying) play();
+}
+function rebuildTo(target){
+  // reset visuals then replay silently
+  term.innerHTML=''; bg.innerHTML=''; curPhase='idle';
+  ['dc01','srv01','ws01','pivot'].forEach(h=>setHostState(h,'pending'));
+  idx=0;
+  const oldEmit=window.requestAnimationFrame;
+  for(let i=0;i<target;i++){emitSilent(E[i]);idx++;}
+  updateProg();
+  if(term.children.length) term.scrollTop=term.scrollHeight;
+}
+function emitSilent(e){ // no animation flash for seek
+  emit(e);
+  const last=term.lastChild; if(last) last.style.animation='none';
+}
+function resetAll(){
+  pause(); idx=0; elapsed=0; t0=0; curPhase='idle';
+  clock.textContent='t+00:00';
+  term.innerHTML='<div class="empty">Press <b>▶ Run build</b> to stream the sequence. Each line appears as it "executes"; the right panel shows the background mechanics in sync.</div>';
+  bg.innerHTML='<div class="empty">The granular mechanics appear here, synced to the current step.</div>';
+  ['dc01','srv01','ws01','pivot'].forEach(h=>setHostState(h,'pending'));
+  document.querySelectorAll('.sitem').forEach(el=>el.classList.remove('cur','past'));
+  spotlight(null);
+  phasepill.className='phasepill idle'; phasepill.textContent='IDLE';
+  document.getElementById('btnPlay').disabled=false;
+  document.getElementById('termdot').classList.remove('live');
+  document.getElementById('bgdot').classList.remove('live');
+  updateProg();
+}
+
+// keyboard: space=play/pause, →=step
+document.addEventListener('keydown',e=>{
+  if(e.code==='Space'){e.preventDefault(); playing?pause():play();}
+  if(e.code==='ArrowRight'){e.preventDefault(); pause(); step();}
+  if(e.code==='KeyR'){resetAll();}
+});
+updateProg();
+</script>
+</body>
+</html>

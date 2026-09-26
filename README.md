@@ -240,6 +240,8 @@ near zero when destroyed.
 
 - [`docs/ad-security-guide.md`](docs/ad-security-guide.md) — in-depth,
   concept-first AD security primer. Start here for the theory.
+- [`docs/flow-dashboard.html`](docs/flow-dashboard.html) — interactive dashboard: Terraform vs manual, Ansible stage-by-stage, wire-level mechanics, and the attack map (open in a browser).
+- [`docs/flow-live.html`](docs/flow-live.html) — an animated "build player" that streams the `terraform apply` → `ansible-playbook` run step by step (open in a browser).
 - [`docs/ad-attack-map.svg`](docs/ad-attack-map.svg) — one-page visual of the
   Kerberos flow and the full attack chain.
 - [`docs/ansible-explained.md`](docs/ansible-explained.md) — line-by-line tour of every playbook and role; read this to learn Ansible from the project itself.

@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lab Build — Deep Flow Dashboard (Terraform &amp; Ansible vs. Manual, background mechanics)</title>
+<style>
+  :root{
+    --bg:#0b0e14; --panel:#12161f; --panel2:#171d29; --panel3:#1d2634; --line:#2a3342;
+    --tf:#7b42bc; --tf2:#a568e0; --ans:#ee0000; --ans2:#ff6b6b;
+    --aws:#ff9900; --win:#3db8ff; --lin:#e95420;
+    --txt:#e6edf3; --dim:#8b95a5; --code:#c9d1d9; --ok:#3fb950; --warn:#e3b341; --err:#ff7b72;
+    --auto:#238636; --manual:#7c5cff; --net:#2dd4bf; --state:#f0a500;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.5;font-size:13.5px}
+  code,.mono{font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace}
+  a{color:var(--tf2);text-decoration:none}
+  /* ---- layout ---- */
+  header{padding:20px 26px;border-bottom:1px solid var(--line);
+    background:linear-gradient(100deg,#12161f 0%,#1a1030 55%,#2a0d0d 100%);position:sticky;top:0;z-index:50}
+  header h1{margin:0 0 3px;font-size:20px}
+  header p{margin:0;color:var(--dim);font-size:12.5px;max-width:1100px}
+  nav.tabs{display:flex;gap:6px;margin-top:14px;flex-wrap:wrap}
+  nav.tabs button{background:var(--panel2);color:var(--dim);border:1px solid var(--line);
+    padding:8px 15px;border-radius:8px 8px 0 0;cursor:pointer;font-size:12.5px;font-weight:600;transition:.15s}
+  nav.tabs button:hover{color:var(--txt);background:var(--panel3)}
+  nav.tabs button.active{color:#fff;border-bottom-color:transparent}
+  nav.tabs button.t-tf.active{background:linear-gradient(180deg,var(--tf),#4a2570);color:#fff}
+  nav.tabs button.t-ans.active{background:linear-gradient(180deg,var(--ans),#7a0d0d)}
+  nav.tabs button.t-net.active{background:linear-gradient(180deg,#0d9488,#0f766e)}
+  nav.tabs button.t-map.active{background:linear-gradient(180deg,#4338ca,#3730a3)}
+  main{padding:0}
+  .tabpane{display:none;padding:24px 26px}
+  .tabpane.show{display:block;animation:fade .25s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  /* ---- legend ---- */
+  .legend{display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 18px}
+  .legend span{font-size:10.5px;padding:3px 9px;border-radius:20px;border:1px solid var(--line);
+    display:inline-flex;align-items:center;gap:6px;color:var(--dim)}
+  .dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+  /* ---- section titles ---- */
+  .phase-title{display:flex;align-items:center;gap:12px;margin:6px 0 4px;font-size:17px}
+  .tag{font-size:10.5px;padding:3px 10px;border-radius:6px;font-weight:700}
+  .tag.tf{background:rgba(123,66,188,.2);color:var(--tf2);border:1px solid var(--tf)}
+  .tag.ans{background:rgba(238,0,0,.15);color:var(--ans2);border:1px solid var(--ans)}
+  .phase-sub{color:var(--dim);margin:0 0 18px;font-size:12.5px;max-width:1150px}
+  /* ---- side-by-side grid ---- */
+  .grid{display:grid;grid-template-columns:1fr 46px 1fr;gap:0;align-items:stretch}
+  .col-head{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;
+    padding:9px 14px;border-radius:9px 9px 0 0;text-align:center}
+  .head-auto{background:linear-gradient(90deg,var(--tf),var(--tf2));color:#fff}
+  .head-auto.ansible{background:linear-gradient(90deg,var(--ans),var(--ans2))}
+  .head-manual{background:#1a212c;color:var(--dim);border:1px solid var(--line)}
+  .col{display:flex;flex-direction:column}
+  .spacer{display:flex;flex-direction:column;align-items:center;padding-top:44px;gap:4px}
+  .arrow{color:var(--net);font-size:18px;line-height:1;opacity:.7}
+  /* ---- step cards ---- */
+  .step{background:var(--panel);border:1px solid var(--line);margin:6px 0;border-radius:11px;
+    padding:13px 15px 14px;position:relative;transition:.16s}
+  .step:hover{border-color:var(--tf2);box-shadow:0 3px 14px rgba(123,66,188,.12)}
+  .col.manual .step:hover{border-color:var(--manual);box-shadow:0 3px 14px rgba(124,92,255,.12)}
+  .step .n{position:absolute;top:-9px;left:13px;font-size:10px;font-weight:800;
+    padding:2px 8px;border-radius:10px;background:var(--auto);color:#fff}
+  .col.manual .step .n{background:#352b5c;color:#c9baff}
+  .step .who{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.04em;margin-top:3px}
+  .step h4{margin:5px 0 6px;font-size:13px}
+  .cmd{background:#070a0f;border:1px solid #1c2531;border-radius:8px;padding:9px 11px;margin:7px 0 0;
+    font-size:11px;color:var(--code);overflow-x:auto;white-space:pre;line-height:1.55}
+  .cmd .c{color:#7ee787}.cmd .k{color:#79c0ff}.cmd .s{color:#a5d6ff}.cmd .comm{color:#6e7681}
+  .cmd .v{color:#ffa657}.cmd .r{color:#ff7b72}
+  .note{font-size:11px;color:var(--dim);margin-top:7px}
+  .note b{color:var(--txt)}
+  .badge{display:inline-block;font-size:9.5px;padding:1px 7px;border-radius:5px;margin:5px 4px 0 0;border:1px solid var(--line);color:var(--dim)}
+  .b-aws{color:var(--aws);border-color:var(--aws)}.b-win{color:var(--win);border-color:var(--win)}
+  .b-lin{color:var(--lin);border-color:var(--lin)}.b-file{color:#58a6ff;border-color:#58a6ff}
+  .b-reboot{color:var(--warn);border-color:var(--warn)}.b-idem{color:var(--ok);border-color:var(--ok)}
+  .b-net{color:var(--net);border-color:var(--net)}.b-state{color:var(--state);border-color:var(--state)}
+  .b-api{color:#d2a8ff;border-color:#8957e5}
+  .effort{font-size:10px;margin-top:9px;padding-top:8px;border-top:1px dashed #232c38;color:var(--dim)}
+  .auto-time{color:var(--ok)}.manual-time{color:var(--ans2)}
+  /* ---- handoff ---- */
+  .handoff{margin:20px 0;padding:16px 20px;border-radius:13px;
+    background:linear-gradient(90deg,rgba(123,66,188,.14),rgba(45,212,191,.10),rgba(238,0,0,.12));
+    border:1px dashed var(--net);text-align:center}
+  .handoff .big{font-size:14px;font-weight:700}
+  .handoff .file{font-family:monospace;color:#ffd479}
+  /* ---- topo ---- */
+  .topo{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin:6px 0 18px}
+  .host{background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:10px 15px;text-align:center;min-width:130px}
+  .host .hn{font-weight:800;font-size:13px}.host .hip{font-family:monospace;font-size:11px;color:#ffd479}
+  .host .hr{font-size:10px;color:var(--dim);margin-top:3px}
+  .host.dc,.host.srv,.host.ws{border-color:var(--win)}.host.piv{border-color:var(--lin)}
+  /* ---- stages ---- */
+  details.stage{margin:9px 0;border:1px solid var(--line);border-radius:12px;background:var(--panel);overflow:hidden}
+  details.stage[open]{border-color:#3a4453}
+  details.stage summary{cursor:pointer;padding:13px 16px;font-weight:700;font-size:13.5px;
+    display:flex;align-items:center;gap:10px;list-style:none;background:var(--panel2)}
+  details.stage summary::-webkit-details-marker{display:none}
+  details.stage summary::before{content:"▶";font-size:9px;color:var(--dim);transition:.2s}
+  details.stage[open] summary::before{transform:rotate(90deg);color:var(--ans2)}
+  details.stage .sbody{padding:6px 16px 16px}
+  .stage-num{font-family:monospace;font-size:10.5px;background:var(--panel3);border:1px solid var(--line);
+    padding:2px 9px;border-radius:6px;color:#ffd479}
+  .stage-host{font-size:10.5px;color:var(--dim);margin-left:auto;font-weight:500}
+  /* ---- kpi ---- */
+  .kpi{display:flex;gap:12px;flex-wrap:wrap;margin:0 0 20px}
+  .kpi div{background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:12px 16px;flex:1;min-width:140px}
+  .kpi .num{font-size:22px;font-weight:800}.kpi .lbl{font-size:10.5px;color:var(--dim)}
+  /* ---- controls ---- */
+  .controls{display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+  .controls button{background:var(--panel2);color:var(--txt);border:1px solid var(--line);
+    padding:6px 12px;border-radius:7px;cursor:pointer;font-size:11.5px}
+  .controls button:hover{border-color:var(--ans2)}
+  .controls .hint{color:var(--dim);font-size:10.5px;margin-left:auto}
+  /* ---- sequence / ladder diagrams ---- */
+  .seq{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:10px 0;overflow-x:auto}
+  .seq h4{margin:0 0 12px;font-size:13px}
+  .ladder{display:grid;gap:0;font-size:11.5px;min-width:640px}
+  .lrow{display:grid;grid-template-columns:120px 1fr 120px;align-items:center;gap:8px;padding:3px 0}
+  .lactor{text-align:center;font-weight:700;font-size:11px;padding:5px 6px;border-radius:7px;border:1px solid var(--line)}
+  .a-op{color:var(--tf2);border-color:var(--tf)}.a-aws{color:var(--aws);border-color:var(--aws)}
+  .a-host{color:var(--win);border-color:var(--win)}.a-ans{color:var(--ans2);border-color:var(--ans)}
+  .a-pivot{color:var(--lin);border-color:var(--lin)}
+  .lmsg{text-align:center;color:var(--dim);font-size:10.5px;position:relative}
+  .lmsg .line{border-top:1.5px solid var(--net);margin:14px 0 2px;position:relative}
+  .lmsg.rl .line{border-color:var(--state)}
+  .lmsg .txt{background:var(--bg);display:inline-block;padding:0 8px;position:relative;top:-9px}
+  .lmsg .ar{position:absolute;top:8px;font-size:12px;color:var(--net)}
+  .lmsg.rl .ar{color:var(--state)}
+  table.matrix{width:100%;border-collapse:collapse;margin:10px 0;font-size:11.5px}
+  table.matrix th,table.matrix td{border:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:top}
+  table.matrix th{background:var(--panel3);color:var(--txt);font-size:10.5px;text-transform:uppercase;letter-spacing:.03em}
+  table.matrix td code{color:#ffa657;font-size:10.5px}
+  table.matrix tr:nth-child(even){background:rgba(255,255,255,.015)}
+  .chainmap{display:flex;flex-direction:column;gap:0;margin:10px 0}
+  .chainstep{display:flex;align-items:stretch;gap:0}
+  .chainbox{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:11px 14px;flex:1}
+  .chainbox .cs-stage{font-size:10px;color:var(--state);font-weight:700;text-transform:uppercase}
+  .chainbox .cs-t{font-weight:700;font-size:13px;margin:2px 0}
+  .chainbox .cs-d{font-size:11px;color:var(--dim)}
+  .chainbox .cs-flag{font-family:monospace;font-size:10.5px;color:var(--ok);margin-top:5px}
+  .chainconn{width:2px;background:linear-gradient(var(--ans),var(--state));margin:0 auto}
+  .chaindrop{text-align:center;color:var(--ans2);font-size:16px;padding:2px 0}
+  footer{padding:24px 26px;color:var(--dim);font-size:11.5px;border-top:1px solid var(--line)}
+  .callout{background:var(--panel2);border-left:3px solid var(--net);border-radius:0 8px 8px 0;padding:10px 14px;margin:12px 0;font-size:11.5px;color:var(--dim)}
+  .callout.tf{border-color:var(--tf2)}.callout.ans{border-color:var(--ans2)}.callout.state{border-color:var(--state)}
+  @media(max-width:900px){.grid{grid-template-columns:1fr}.spacer{display:none}.col-head{border-radius:8px;margin-top:8px}}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Lab Build — Deep Flow Dashboard</h1>
+  <p>Every command &amp; background mechanic when <b style="color:var(--tf2)">Terraform</b> provisions and control hands to <b style="color:var(--ans2)">Ansible</b>, shown side-by-side with the manual AWS-console / RDP-PowerShell equivalent. Repo: <code>learn-ansible-vulnerable-lab-env</code>. Nothing is executed — this is a study map built from the actual code.</p>
+  <nav class="tabs">
+    <button class="t-tf active" onclick="tab('tf',this)">1 · Terraform → AWS</button>
+    <button class="t-ans" onclick="tab('ans',this)">2 · Ansible → Windows/Linux</button>
+    <button class="t-net" onclick="tab('net',this)">3 · Background mechanics</button>
+    <button class="t-map" onclick="tab('map',this)">4 · What it builds (attack map)</button>
+  </nav>
+</header>
+
+<main>
+
+<!-- ============================================================ -->
+<!-- TAB 1 : TERRAFORM                                             -->
+<!-- ============================================================ -->
+<section id="tab-tf" class="tabpane show">
+  <div class="legend">
+    <span><i class="dot" style="background:var(--tf2)"></i>Terraform</span>
+    <span><i class="dot" style="background:var(--manual)"></i>Manual equivalent</span>
+    <span class="badge b-api">AWS API call</span>
+    <span class="badge b-state">state file</span>
+    <span class="badge b-file">writes file</span>
+    <span class="badge b-reboot">causes reboot</span>
+  </div>
+
+  <div class="kpi">
+    <div><div class="num" style="color:var(--tf2)">3</div><div class="lbl">commands: <code>init · plan · apply</code></div></div>
+    <div><div class="num" style="color:var(--tf2)">~14</div><div class="lbl">AWS resources in the graph</div></div>
+    <div><div class="num" style="color:var(--tf2)">2</div><div class="lbl">providers (aws 5.40, local 2.4)</div></div>
+    <div><div class="num" style="color:var(--aws)">~20+</div><div class="lbl">AWS API calls made for you</div></div>
+    <div><div class="num" style="color:var(--ans2)">1</div><div class="lbl">handoff file generated</div></div>
+  </div>
+
+  <h2 class="phase-title"><span class="tag tf">PHASE 1</span> Provision infrastructure &nbsp;·&nbsp; <span style="color:var(--tf2)">Terraform</span> vs. AWS Console by hand</h2>
+  <p class="phase-sub">Terraform reads <code>terraform/*.tf</code>, builds a dependency graph, and issues AWS API calls in the right order. Each row = one unit of work; left is the declarative resource + the API calls it triggers, right is the console clicks for the identical result. Rows are in graph order (data sources → network → SG → key → instances → handoff).</p>
+
+  <div class="grid">
+    <div class="col-head head-auto">TERRAFORM — declarative, stateful, one <code>apply</code></div>
+    <div></div>
+    <div class="col-head head-manual">MANUAL — AWS Console / CLI, order &amp; drift on you</div>
+
+    <!-- 0 -->
+    <div class="col"><div class="step"><span class="n">0</span><div class="who">terraform CLI · your Mac</div>
+      <h4>init → plan → apply</h4>
+      <div class="cmd"><span class="c">terraform</span> <span class="k">init</span>   <span class="comm"># pull aws+local providers, .terraform/</span>
+<span class="c">terraform</span> <span class="k">plan</span>   <span class="comm"># diff desired-state vs terraform.tfstate</span>
+<span class="c">terraform</span> <span class="k">apply</span>  <span class="comm"># execute the plan, update state</span></div>
+      <div class="badge b-state">terraform.tfstate</div>
+      <div class="note">Inputs from <code>terraform.tfvars</code>: <code>operator_cidr</code> (your /32), <code>admin_password</code>, region. Provider config in <code>versions.tf</code> tags everything <code>Managed=terraform</code>.</div>
+      <div class="effort"><b>Effort:</b> <span class="auto-time">one command; state remembers everything</span></div></div></div>
+    <div class="spacer"><div class="arrow">≡</div></div>
+    <div class="col manual"><div class="step"><span class="n">0</span><div class="who">you · AWS Console</div>
+      <h4>Log in, choose region, keep a mental plan</h4>
+      <div class="note">Sign in, select <code>us-east-1</code>. There is no state file — you track what exists and what changed by hand, and you must remember dependency order yourself.</div>
+      <div class="effort"><b>Effort:</b> <span class="manual-time">notepad checklist, drift-prone</span></div></div></div>
+
+    <!-- 1 -->
+    <div class="col"><div class="step"><span class="n">1</span><div class="who">data.aws_ami ×2</div>
+      <h4>Resolve newest AMIs at plan time</h4>
+      <div class="cmd"><span class="k">data</span> <span class="s">"aws_ami" "windows"</span> most_recent
+   filter name=<span class="v">Windows_Server-2022-Full-Base-*</span>
+<span class="k">data</span> <span class="s">"aws_ami" "ubuntu"</span>  owner=Canonical
+   filter name=<span class="v">ubuntu-jammy-22.04-*</span></div>
+      <div class="badge b-api">ec2:DescribeImages</div>
+      <div class="note">No stale hard-coded IDs — it always grabs the latest.</div></div></div>
+    <div class="spacer"><div class="arrow">→</div></div>
+    <div class="col manual"><div class="step"><span class="n">1</span><div class="who">you · EC2 → AMIs</div>
+      <h4>Search catalog, copy 2 AMI IDs</h4>
+      <div class="note">Filter Quickstart AMIs, copy the <code>ami-…</code> strings, re-check monthly when they rotate.</div></div></div>
+
+    <!-- 2 -->
+    <div class="col"><div class="step"><span class="n">2</span><div class="who">aws_vpc → igw → subnet → route_table → assoc</div>
+      <h4>Network fabric (5 resources, ordered)</h4>
+      <div class="cmd"><span class="k">aws_vpc</span> lab            <span class="v">10.10.0.0/16</span> dns_support+hostnames
+<span class="k">aws_internet_gateway</span> lab  → attach to vpc
+<span class="k">aws_subnet</span> lab         <span class="v">10.10.10.0/24</span> map_public_ip=true
+<span class="k">aws_route_table</span> lab    <span class="v">0.0.0.0/0</span> → igw
+<span class="k">aws_route_table_association</span> subnet ↔ rt</div>
+      <div class="badge b-api">CreateVpc</div><div class="badge b-api">CreateInternetGateway</div><div class="badge b-api">AttachInternetGateway</div><div class="badge b-api">CreateSubnet</div><div class="badge b-api">CreateRouteTable</div><div class="badge b-api">AssociateRouteTable</div>
+      <div class="note">Terraform computes that igw must attach before the route, subnet before assoc — the graph enforces order automatically.</div></div></div>
+    <div class="spacer"><div class="arrow">→</div></div>
+    <div class="col manual"><div class="step"><span class="n">2</span><div class="who">you · VPC console (5 wizards)</div>
+      <h4>Create VPC, IGW, subnet, route, assoc</h4>
+      <div class="note">Create VPC → create &amp; attach IGW → create subnet (enable auto public IP) → create route table → add 0.0.0.0/0→IGW → associate to subnet. Forget the association and traffic silently blackholes.</div></div></div>
+
+    <!-- 3 -->
+    <div class="col"><div class="step"><span class="n">3</span><div class="who">aws_security_group lab</div>
+      <h4>One SG + 5 rules (self-mesh + your IP)</h4>
+      <div class="cmd">ingress <span class="v">self=true proto=-1</span>        <span class="comm"># all AD ports intra-lab</span>
+ingress 3389/tcp ← <span class="v">var.operator_cidr</span> <span class="comm"># RDP  (you only)</span>
+ingress 5985/tcp ← <span class="v">var.operator_cidr</span> <span class="comm"># WinRM(you only)</span>
+ingress 22/tcp   ← <span class="v">var.operator_cidr</span> <span class="comm"># SSH  (you only)</span>
+egress  <span class="v">all → 0.0.0.0/0</span></div>
+      <div class="badge b-api">CreateSecurityGroup</div><div class="badge b-api">AuthorizeSecurityGroupIngress×4</div><div class="badge b-api">AuthorizeEgress</div>
+      <div class="note"><b>self=true</b> opens DNS/LDAP/Kerberos/SMB/RPC only between lab hosts — the whole reason AD works without listing 20 ports.</div></div></div>
+    <div class="spacer"><div class="arrow">→</div></div>
+    <div class="col manual"><div class="step"><span class="n">3</span><div class="who">you · Security Groups</div>
+      <h4>Create SG, add each rule by hand</h4>
+      <div class="note">Look up your public IP, create the SG in the VPC, add the self-referencing all-traffic rule, add 3 mgmt rules scoped to your /32. Wrong CIDR = locked out or exposed to the internet.</div></div></div>
+
+    <!-- 4 -->
+    <div class="col"><div class="step"><span class="n">4</span><div class="who">aws_key_pair lab</div>
+      <h4>Import SSH public key</h4>
+      <div class="cmd">public_key = <span class="k">file</span>(<span class="s">"~/.ssh/id_rsa.pub"</span>)</div>
+      <div class="badge b-api">ImportKeyPair</div>
+      <div class="note">Used to SSH the pivot as <code>ubuntu</code>.</div></div></div>
+    <div class="spacer"><div class="arrow">→</div></div>
+    <div class="col manual"><div class="step"><span class="n">4</span><div class="who">you · Key Pairs</div>
+      <h4>Import → paste public key</h4>
+      <div class="note">Console → Key Pairs → Import → paste <code>id_rsa.pub</code>.</div></div></div>
+
+    <!-- 5 -->
+    <div class="col"><div class="step"><span class="n">5</span><div class="who">aws_instance.windows (for_each map)</div>
+      <h4>Launch dc01 + srv01 (+ ws01) in one block</h4>
+      <div class="cmd"><span class="k">locals</span>.windows_hosts = { dc01,srv01,[ws01] }
+<span class="k">for_each</span> ⇒ ami=win type=<span class="v">t3.large</span>
+   subnet=lab  sg=[lab]  key=lab
+   private_ip = <span class="v">10.10.10.{10,20,30}</span>
+   metadata http_tokens=<span class="v">required</span>  <span class="comm"># IMDSv2</span>
+   root gp3 <span class="v">50GB</span>
+   <span class="k">user_data</span> = templatefile(windows_userdata.ps1.tpl,
+                { hostname, admin_password })</div>
+      <div class="badge b-api">RunInstances×2–3</div><div class="badge b-win">bootstrap</div>
+      <div class="note">One block → N hosts. <code>ws01</code> is conditional on <code>enable_ws01</code>. The <b>user_data</b> is the crucial bit (row 5b).</div></div></div>
+    <div class="spacer"><div class="arrow">→</div></div>
+    <div class="col manual"><div class="step"><span class="n">5</span><div class="who">you · Launch wizard ×3</div>
+      <h4>Run the launch wizard once per Windows VM</h4>
+      <div class="note">Each host: pick AMI, t3.large, subnet, SG, key, type the static private IP, force IMDSv2, set 50GB gp3, paste user-data under Advanced. Three passes, IPs kept straight manually.</div></div></div>
+
+    <!-- 5b -->
+    <div class="col"><div class="step"><span class="n">5b</span><div class="who">EC2 first-boot · each Windows host</div>
+      <h4>user_data script → make it Ansible-reachable</h4>
+      <div class="cmd"><span class="comm"># windows_userdata.ps1.tpl (runs as SYSTEM at boot)</span>
+net user Administrator "<span class="v">$pw</span>"      <span class="comm"># known creds</span>
+Rename-Computer dc01|srv01|ws01
+Enable-PSRemoting -Force -SkipNetworkProfileCheck
+winrm quickconfig -quiet
+winrm set …/service '@{AllowUnencrypted="<span class="v">false</span>"}'
+winrm set …/auth   '@{Negotiate="<span class="v">true</span>"; Basic="<span class="v">false</span>"}'
+New-NetFirewallRule 5985/tcp allow
+Set-Service WinRM -Startup Automatic; Start
+<span class="r">Restart-Computer -Force</span>            <span class="comm"># rename needs reboot</span></div>
+      <div class="badge b-win">WinRM 5985 up</div><div class="badge b-reboot">reboots once</div>
+      <div class="note">Cloud replacement for a Vagrant base box. NTLM + AllowUnencrypted=false ⇒ message-level encryption over HTTP.</div></div></div>
+    <div class="spacer"><div class="arrow">→</div></div>
+    <div class="col manual"><div class="step"><span class="n">5b</span><div class="who">you · RDP each host (~10 min ea.)</div>
+      <h4>Configure WinRM by hand on all 3</h4>
+      <div class="note">Wait for the password, decrypt with the key, RDP in, admin PowerShell: set password, rename, Enable-PSRemoting, harden auth, firewall rule, reboot, log back in. ×3.</div></div></div>
+
+    <!-- 6 -->
+    <div class="col"><div class="step"><span class="n">6</span><div class="who">aws_instance.pivot</div>
+      <h4>Launch Ubuntu attacker box</h4>
+      <div class="cmd">ami=ubuntu type=<span class="v">t3.small</span> subnet=lab sg=[lab]
+private_ip=<span class="v">10.10.10.5</span> gp3 20GB IMDSv2</div>
+      <div class="badge b-api">RunInstances</div><div class="badge b-lin">SSH ready via key</div>
+      <div class="note">Internet egress so Ansible can pip-install offensive tooling later.</div></div></div>
+    <div class="spacer"><div class="arrow">→</div></div>
+    <div class="col manual"><div class="step"><span class="n">6</span><div class="who">you · Launch wizard</div>
+      <h4>Launch Ubuntu VM</h4>
+      <div class="note">Ubuntu 22.04, t3.small, subnet, SG, key, static IP .5, 20GB gp3.</div></div></div>
+
+    <!-- 7 -->
+    <div class="col"><div class="step"><span class="n">7</span><div class="who">local_file.inventory (THE HANDOFF)</div>
+      <h4>Render inventory/hosts.ini from live IPs</h4>
+      <div class="cmd"><span class="comm"># inventory.ini.tpl ← aws_instance.*.public_ip</span>
+[domain_controllers]  dc01 ansible_host=<span class="v">&lt;pub&gt;</span>
+[domain_members]      srv01…  ws01…
+[linux_pivot] pivot… ansible_connection=ssh ansible_user=ubuntu
+[windows:children] domain_controllers, domain_members
+[lab:children]     windows, linux_pivot</div>
+      <div class="badge b-file">../inventory/hosts.ini</div><div class="badge b-state">tracked in state</div>
+      <div class="note"><code>outputs.tf</code> also prints public IPs, private IPs, and a "next_steps" runbook. Private IPs stay fixed so domain vars never change.</div></div></div>
+    <div class="spacer"><div class="arrow">→</div></div>
+    <div class="col manual"><div class="step"><span class="n">7</span><div class="who">you · text editor</div>
+      <h4>Hand-copy 4 public IPs into inventory</h4>
+      <div class="note">Read IPs off the console, type them into <code>hosts.ini</code> under the right groups. One typo = Ansible can't connect.</div></div></div>
+  </div>
+
+  <div class="handoff">
+    <div class="big">🔗 CONTROL HANDOFF — Terraform → Ansible</div>
+    <div style="margin-top:6px">Terraform's final resource writes <span class="file">inventory/hosts.ini</span> with live public IPs.
+    Wait ~5 min for the Windows first-boot reboot, verify with <code>ansible windows -m win_ping</code>, then run <code>ansible-playbook site.yml</code>. Private 10.10.10.x IPs are the constant that both phases share.</div>
+  </div>
+
+  <p class="phase-sub" style="text-align:center">Result in AWS — VPC 10.10.0.0/16 · subnet 10.10.10.0/24 · full internal mesh · mgmt ports locked to your IP:</p>
+  <div class="topo">
+    <div class="host dc"><div class="hn">dc01</div><div class="hip">10.10.10.10</div><div class="hr">Windows · DC + DNS</div></div>
+    <div class="host srv"><div class="hn">srv01</div><div class="hip">10.10.10.20</div><div class="hr">Windows · ADCS + SMB</div></div>
+    <div class="host ws"><div class="hn">ws01</div><div class="hip">10.10.10.30</div><div class="hr">Windows · workstation</div></div>
+    <div class="host piv"><div class="hn">pivot</div><div class="hip">10.10.10.5</div><div class="hr">Ubuntu · attacker box</div></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- TAB 2 : ANSIBLE                                               -->
+<!-- ============================================================ -->
+<section id="tab-ans" class="tabpane">
+  <div class="legend">
+    <span><i class="dot" style="background:var(--ans2)"></i>Ansible module</span>
+    <span><i class="dot" style="background:var(--manual)"></i>Manual (RDP/PowerShell)</span>
+    <span class="badge b-win">WinRM/NTLM 5985</span>
+    <span class="badge b-lin">SSH</span>
+    <span class="badge b-reboot">reboot+reconnect</span>
+    <span class="badge b-idem">idempotent</span>
+  </div>
+
+  <div class="kpi">
+    <div><div class="num" style="color:var(--ans2)">1</div><div class="lbl"><code>ansible-playbook site.yml</code></div></div>
+    <div><div class="num" style="color:var(--ans2)">7</div><div class="lbl">staged playbooks</div></div>
+    <div><div class="num" style="color:var(--ans2)">13</div><div class="lbl">roles executed</div></div>
+    <div><div class="num" style="color:var(--ans2)">~50</div><div class="lbl">tasks (all idempotent)</div></div>
+    <div><div class="num" style="color:var(--warn)">3</div><div class="lbl">automatic reboots handled</div></div>
+  </div>
+
+  <h2 class="phase-title"><span class="tag ans">PHASE 2</span> Configure the lab &nbsp;·&nbsp; <span style="color:var(--ans2)">Ansible</span> vs. RDP + PowerShell by hand</h2>
+  <p class="phase-sub"><code>site.yml</code> imports 7 playbooks in strict dependency order. Ansible reads <code>ansible.cfg</code> (inventory, 8 forks, yaml callback, pipelining) and the <code>group_vars</code> (WinRM/SSH creds, domain identity, the single-source-of-truth <code>all.yml</code>). Windows tasks travel as WinRM/NTLM; each module is compiled to PowerShell, shipped, run, and the JSON result returned. Expand each stage for the exact module→command mapping and the manual equivalent.</p>
+
+  <div class="controls">
+    <button onclick="openAll()">Expand all stages</button>
+    <button onclick="closeAll()">Collapse all</button>
+    <span class="hint">order matters: DC → members → content → vulns → ADCS → flags → pivot</span>
+  </div>
+
+  <div class="grid" style="margin-bottom:12px">
+    <div class="col-head head-auto ansible"><code>ansible-playbook site.yml</code> — connects, compiles, retries, reboots for you</div>
+    <div></div>
+    <div class="col-head head-manual">RDP into each host · run PowerShell · sequence it yourself</div>
+  </div>
+
+  <!-- STAGE 01 -->
+  <details class="stage" open>
+    <summary><span class="stage-num">01</span> Promote dc01 → first DC of vuln.local
+      <span class="stage-host">playbooks/01 · hosts: domain_controllers · roles: common_win → domain_controller</span></summary>
+    <div class="sbody"><div class="grid">
+      <div class="col">
+        <div class="step"><span class="n">A</span><div class="who">role common_win (7 tasks)</div>
+          <h4>Baseline the host</h4>
+          <div class="cmd"><span class="k">win_dns_client</span> adapter=* dns=<span class="v">10.10.10.10</span>
+<span class="k">win_timezone</span> UTC                <span class="comm"># Kerberos clock skew guard</span>
+<span class="k">win_service</span> w32time started auto
+<span class="k">win_shell</span> Set-MpPreference -DisableRealtime  <span class="comm"># lab</span>
+<span class="k">win_firewall</span> disabled [Domain,Private,Public]
+<span class="k">win_regedit</span> fDenyTSConnections=0   <span class="comm"># RDP on</span>
+<span class="k">win_firewall_rule</span> "Remote Desktop" 3389 allow</div>
+          <div class="badge b-idem">idempotent</div><div class="badge b-win">WinRM</div>
+          <div class="note">Toggled by <code>common_win_*</code> defaults (disable defender/firewall, enable RDP = true).</div></div>
+        <div class="step"><span class="n">B</span><div class="who">role domain_controller (5 tasks)</div>
+          <h4>Install AD DS + create the forest</h4>
+          <div class="cmd"><span class="k">win_user</span> Administrator ← lab_domain_admin_password
+<span class="k">win_feature</span> AD-Domain-Services + RSAT-AD-*
+<span class="k">microsoft.ad.domain</span>
+   dns_domain_name=<span class="v">vuln.local</span> netbios=<span class="v">VULN</span>
+   safe_mode_password=… domain/forest_mode=WinThreshold
+   install_dns=true  <span class="r">reboot=true</span>
+<span class="k">win_shell</span> Get-ADDomain  <span class="v">until succeeded, retries=30 delay=20</span>
+<span class="k">debug</span> "Domain … online"</div>
+          <div class="badge b-reboot">promote+reboot+reconnect</div><div class="badge b-idem">idempotent</div>
+          <div class="note"><b>microsoft.ad.domain</b> does the promote, waits, reboots the box, reconnects WinRM, and the retry loop blocks until LDAP answers — all handled for you.</div></div>
+      </div>
+      <div class="spacer"><div class="arrow">⇄</div></div>
+      <div class="col manual">
+        <div class="step"><span class="n">A</span><div class="who">you · RDP to dc01</div>
+          <h4>Click through baseline</h4>
+          <div class="note">NIC → set DNS to self; set UTC; confirm w32time; Defender → off; firewall off on 3 profiles; System Properties → enable Remote Desktop; add the RDP firewall rule.</div></div>
+        <div class="step"><span class="n">B</span><div class="who">you · Server Manager + dcpromo</div>
+          <h4>Add-Roles wizard, then promote</h4>
+          <div class="note">Install AD DS role; run "Promote to domain controller"; new forest <code>vuln.local</code>; set DSRM password; click through; wait for reboot; log back in; manually poll <code>Get-ADDomain</code> until AD services answer before continuing.</div></div>
+      </div>
+    </div></div>
+  </details>
+
+  <!-- STAGE 02 -->
+  <details class="stage">
+    <summary><span class="stage-num">02</span> Join srv01 (+ ws01) to the domain
+      <span class="stage-host">playbooks/02 · hosts: domain_members · roles: common_win → domain_member</span></summary>
+    <div class="sbody"><div class="grid">
+      <div class="col"><div class="step"><span class="n">A</span><div class="who">domain_member (4 tasks)</div>
+        <h4>Wait for DNS, join, reboot, confirm</h4>
+        <div class="cmd"><span class="k">win_shell</span> Resolve-DnsName vuln.local A
+   <span class="v">until ok, retries=30 delay=15</span>   <span class="comm"># DC DNS live?</span>
+<span class="k">microsoft.ad.membership</span>
+   dns_domain_name=vuln.local
+   admin=<span class="v">VULN\Administrator</span> state=domain <span class="r">reboot=true</span>
+<span class="k">win_shell</span> (Get-CimInstance Win32_ComputerSystem).Domain
+<span class="k">debug</span> "joined to vuln.local"</div>
+        <div class="badge b-reboot">join+reboot</div><div class="badge b-idem">idempotent</div>
+        <div class="note">common_win runs first here too — pointing DNS at the DC is what makes the join resolve. Both members processed in parallel (forks=8).</div></div></div>
+      <div class="spacer"><div class="arrow">⇄</div></div>
+      <div class="col manual"><div class="step"><span class="n">A</span><div class="who">you · RDP srv01 &amp; ws01</div>
+        <h4>System Properties → Change → Domain</h4>
+        <div class="note">Per host: set DNS to 10.10.10.10, verify resolution, join <code>vuln.local</code> with VULN\Administrator, reboot, log back in, confirm. Sequenced after the DC is fully up; repeat for the second member.</div></div></div>
+    </div></div>
+  </details>
+
+  <!-- STAGE 03 -->
+  <details class="stage">
+    <summary><span class="stage-num">03</span> Populate AD (OUs, groups, users, memberships)
+      <span class="stage-host">playbooks/03 · host: dc01 · role: ad_content · data: group_vars/all.yml</span></summary>
+    <div class="sbody"><div class="grid">
+      <div class="col"><div class="step"><span class="n">A</span><div class="who">ad_content (4 looped tasks)</div>
+        <h4>Create the directory contents from data</h4>
+        <div class="cmd"><span class="k">microsoft.ad.ou</span> loop → Staff, ServiceAccounts,
+      Groups, Servers, Workstations   (5)
+<span class="k">microsoft.ad.group</span> loop → IT Support, Service Accounts,
+      IT Admins   security/global     (3)
+<span class="k">microsoft.ad.user</span> loop → helpdesk, svc_mssql,
+      svc_backup, trent.admin  never_expires (4) <span class="comm">no_log</span>
+<span class="k">microsoft.ad.group</span> subelements → add users→groups</div>
+        <div class="badge b-idem">idempotent</div>
+        <div class="note">All values come from <code>all.yml</code> (single source of truth). Weak passwords are deliberate (Summer2024, Backup2023). Edit the file, re-run, done.</div></div></div>
+      <div class="spacer"><div class="arrow">⇄</div></div>
+      <div class="col manual"><div class="step"><span class="n">A</span><div class="who">you · ADUC / PowerShell on dc01</div>
+        <h4>Create ~16 objects by hand</h4>
+        <div class="note">In ADUC: 5 OUs, 3 groups (right OU + scope), 4 users (UPN, description, password, "never expires"), then add each user to its groups. Every field is typo-sensitive and there's no re-run safety.</div></div></div>
+    </div></div>
+  </details>
+
+  <!-- STAGE 04 -->
+  <details class="stage">
+    <summary><span class="stage-num">04</span> Plant the AD attack chain (Kerberoast · AS-REP · ACL→DCSync)
+      <span class="stage-host">playbooks/04 · host: dc01 · roles: vuln_kerberoast → vuln_asrep → vuln_acl_dcsync</span></summary>
+    <div class="sbody"><div class="grid">
+      <div class="col">
+        <div class="step"><span class="n">A</span><div class="who">vuln_kerberoast</div>
+          <h4>SPNs on svc_mssql (Stage 1)</h4>
+          <div class="cmd"><span class="k">microsoft.ad.user</span> svc_mssql spn.set=
+   <span class="v">MSSQLSvc/srv01.vuln.local:1433</span>
+   <span class="v">MSSQLSvc/srv01.vuln.local</span>
+<span class="k">win_shell</span> Get-ADUser -LDAPFilter '(SPN=*)' → JSON</div></div>
+        <div class="step"><span class="n">B</span><div class="who">vuln_asrep</div>
+          <h4>Disable pre-auth on svc_backup (Stage 1b)</h4>
+          <div class="cmd"><span class="k">win_shell</span> Set-ADAccountControl svc_backup `
+   -DoesNotRequirePreAuth <span class="v">$true</span>
+   <span class="comm"># selected via selectattr('no_preauth')</span></div></div>
+        <div class="step"><span class="n">C</span><div class="who">vuln_acl_dcsync (dsacls)</div>
+          <h4>GenericAll + replication rights (Stage 2&amp;3)</h4>
+          <div class="cmd"><span class="comm"># resolve target group DN</span>
+<span class="k">win_shell</span> (Get-ADGroup "IT Admins").DistinguishedName
+<span class="comm"># Stage 2: svc_mssql GenericAll over IT Admins</span>
+<span class="k">dsacls</span> &lt;DN&gt; /G <span class="v">VULN\svc_mssql:GA</span>
+<span class="comm"># Stage 3: IT Admins gets DCSync on domain head</span>
+<span class="k">dsacls</span> DC=vuln,DC=local /G <span class="v">VULN\IT Admins:CA</span>;
+   "Replicating Directory Changes"
+   "Replicating Directory Changes All"
+<span class="k">win_shell</span> dsacls … | Select-String "IT Admins"  <span class="comm"># verify</span></div>
+          <div class="note">dsacls chosen because it maps 1:1 to what a defender audits.</div></div>
+      </div>
+      <div class="spacer"><div class="arrow">⇄</div></div>
+      <div class="col manual">
+        <div class="step"><span class="n">A</span><div class="who">you · setspn</div><h4>Add each SPN, verify</h4>
+          <div class="note"><code>setspn -a MSSQLSvc/srv01.vuln.local:1433 svc_mssql</code> + the second SPN.</div></div>
+        <div class="step"><span class="n">B</span><div class="who">you · ADUC Account tab</div><h4>Tick "no pre-auth"</h4>
+          <div class="note">svc_backup → Account options → "Do not require Kerberos preauthentication".</div></div>
+        <div class="step"><span class="n">C</span><div class="who">you · Security → Advanced</div><h4>Hand-craft 2 dangerous ACLs</h4>
+          <div class="note">Grant svc_mssql GenericAll on IT Admins; grant IT Admins the two replication extended rights on the domain head. Easy to over/under-grant by hand.</div></div>
+      </div>
+    </div></div>
+  </details>
+
+  <!-- STAGE 05 -->
+  <details class="stage">
+    <summary><span class="stage-num">05</span> Install ADCS + publish the ESC1 template
+      <span class="stage-host">playbooks/05 · host: srv01 · roles: adcs_ca → vuln_adcs_esc1</span></summary>
+    <div class="sbody"><div class="grid">
+      <div class="col">
+        <div class="step"><span class="n">A</span><div class="who">adcs_ca (5 tasks)</div>
+          <h4>Enterprise Root CA on srv01</h4>
+          <div class="cmd"><span class="k">win_feature</span> AD-Certificate, ADCS-Cert-Authority,
+   ADCS-Web-Enrollment, RSAT-ADCS[-Mgmt]
+<span class="k">Install-AdcsCertificationAuthority</span>
+   CAType=<span class="v">EnterpriseRootCA</span> CN=<span class="v">VULN-Root-CA</span>
+   KeyLength=2048 SHA256 Validity=5y  (idempotent try/catch)
+<span class="k">Install-AdcsWebEnrollment</span> -Force
+<span class="k">win_service</span> certsvc started auto</div></div>
+        <div class="step"><span class="n">B</span><div class="who">vuln_adcs_esc1 (5 tasks, ADSI)</div>
+          <h4>Create + publish the vulnerable template</h4>
+          <div class="cmd"><span class="k">win_template</span> New-ESC1Template.ps1 → C:\Windows\Temp
+<span class="k">win_template</span> Publish-ESC1Template.ps1 → …
+<span class="k">win_shell</span> New-ESC1Template.ps1  <span class="comm"># ADSI clone "User"</span>
+   msPKI-Certificate-Name-Flag = <span class="r">0x1</span>  <span class="comm"># ENROLLEE_SUPPLIES_SUBJECT</span>
+   msPKI-Enrollment-Flag       = <span class="v">0x0</span>  <span class="comm"># no mgr approval</span>
+   msPKI-RA-Signature          = <span class="v">0x0</span>  <span class="comm"># no signatures</span>
+   EKU = <span class="r">1.3.6.1.5.5.7.3.2</span>            <span class="comm"># Client Authentication</span>
+   grant Enroll+AutoEnroll → <span class="v">VULN\Domain Users</span>
+<span class="k">pause</span> 10s   <span class="comm"># let AD replicate the object</span>
+<span class="k">win_shell</span> Publish-ESC1Template.ps1  <span class="v">until published (5×,10s)</span></div>
+          <div class="note">No native Ansible module for cert templates → explicit ADSI script exposes every vulnerable attribute.</div></div>
+      </div>
+      <div class="spacer"><div class="arrow">⇄</div></div>
+      <div class="col manual">
+        <div class="step"><span class="n">A</span><div class="who">you · RDP srv01</div><h4>AD CS role + config wizard</h4>
+          <div class="note">Add AD CS + web enrollment; post-deploy "Configure AD CS" wizard → Enterprise Root CA → name/key/hash/validity → finish → confirm certsvc.</div></div>
+        <div class="step"><span class="n">B</span><div class="who">you · certtmpl.msc + certsrv.msc</div><h4>Duplicate template, set ESC1 flags, publish</h4>
+          <div class="note">Duplicate "User"; add Client Auth EKU; tick "Supply in the request" (SAN); no manager approval; enroll = Domain Users; then CA console → New → Template to Issue. Any wrong checkbox breaks or over-exposes it.</div></div>
+      </div>
+    </div></div>
+  </details>
+
+  <!-- STAGE 06 -->
+  <details class="stage">
+    <summary><span class="stage-num">06</span> Plant flags: NTFS ACLs + SMB shares (gated by identity)
+      <span class="stage-host">playbooks/06 · hosts: srv01 &amp; dc01 · role: flags (per-host flags_to_place)</span></summary>
+    <div class="sbody"><div class="grid">
+      <div class="col"><div class="step"><span class="n">A</span><div class="who">flags (4 looped tasks)</div>
+        <h4>dirs → files → lock ACLs → share</h4>
+        <div class="cmd"><span class="k">win_file</span> dir loop → C:\Shares\{mssql_backups,
+   backups,itadmin}, C:\Flags
+<span class="k">win_template</span> flag.txt.j2 → each flag (flag+hint+ACL note)
+<span class="k">icacls</span> $dir /inheritance:<span class="r">r</span>
+   /grant:r SYSTEM:(OI)(CI)F  Administrators:(OI)(CI)F
+   /grant:r <span class="v">VULN\&lt;principal&gt;:(OI)(CI)R</span>   <span class="comm"># gated read</span>
+<span class="k">New-SmbShare</span> mssql_backups$|backups$|itadmin$
+   Grant-SmbShareAccess <span class="v">&lt;principal&gt;</span> Read</div>
+        <div class="note">srv01 gets: kerberoast→svc_mssql, asrep→svc_backup, acl_abuse→IT Admins, adcs_esc1→Domain Admins. dc01 gets: dcsync→Domain Admins (C:\Flags\domain_pwned.txt).</div></div></div>
+      <div class="spacer"><div class="arrow">⇄</div></div>
+      <div class="col manual"><div class="step"><span class="n">A</span><div class="who">you · Explorer + icacls (2 hosts)</div>
+        <h4>Folders, files, ACLs, shares by hand</h4>
+        <div class="note">Per location (~7): create folder, write flag, Security → Advanced → disable inheritance → remove groups → add SYSTEM/Admins (Full) + one principal (Read); then create each SMB share with matching share perms. Across srv01 and dc01.</div></div></div>
+    </div></div>
+  </details>
+
+  <!-- STAGE 07 -->
+  <details class="stage">
+    <summary><span class="stage-num">07</span> Configure the Linux pivot + drop Stage-0 foothold
+      <span class="stage-host">playbooks/07 · host: pivot · role: linux_pivot · connection: SSH · gather_facts: true</span></summary>
+    <div class="sbody"><div class="grid">
+      <div class="col"><div class="step"><span class="n">A</span><div class="who">linux_pivot (7 tasks, SSH+become)</div>
+        <h4>Tooling · DNS · foothold</h4>
+        <div class="cmd"><span class="k">apt</span> python3,pip,venv,git,ldap-utils,dnsutils,
+   nmap,curl,jq  update_cache  <span class="comm">(failed_when:false)</span>
+<span class="k">pip</span> impacket,bloodhound,certipy-ad → /opt/offsec-venv
+<span class="k">copy</span> /etc/systemd/resolved.conf.d/vuln-lab.conf
+   DNS=<span class="v">10.10.10.10</span> Domains=~vuln.local
+<span class="k">service</span> systemd-resolved restarted (if changed)
+<span class="k">file</span> ~/notes  mode=0700 owner=ubuntu
+<span class="k">template</span> creds.txt   <span class="comm"># helpdesk:Helpdesk#123 + FLAG{...stage0}</span>
+<span class="k">template</span> README-attacker.md</div>
+        <div class="badge b-lin">SSH</div>
+        <div class="note">"best effort" tasks tolerate offline builds. creds.txt is the intended Stage-0 starting credential for the whole chain.</div></div></div>
+      <div class="spacer"><div class="arrow">⇄</div></div>
+      <div class="col manual"><div class="step"><span class="n">A</span><div class="who">you · SSH to pivot</div>
+        <h4>apt / pip / DNS / files by hand</h4>
+        <div class="note"><code>apt install</code> the set; make a venv + pip impacket/bloodhound/certipy; write the resolved drop-in + restart; mkdir ~/notes 0700; hand-write creds.txt (0600) and README.</div></div></div>
+    </div></div>
+  </details>
+
+  <!-- lifecycle -->
+  <h2 class="phase-title" style="font-size:15px;margin-top:22px">Day-2 lifecycle — why idempotence + state win</h2>
+  <div class="grid">
+    <div class="col">
+      <div class="step"><div class="who">soft reset</div><h4><code>make reset-soft</code> → reset.yml</h4>
+        <div class="cmd">remove lab users/groups (microsoft.ad state=absent)
+delete ESC1 template (ADSI DeleteTree) + Remove-CATemplate
+→ re-import 03,04,05,06  <span class="comm"># re-plant from code</span>
+<span class="comm"># issued certs / golden tickets survive a soft reset</span></div></div>
+      <div class="step"><div class="who">full rebuild</div><h4><code>make tf-destroy &amp;&amp; make all</code></h4>
+        <div class="cmd">terraform destroy  <span class="comm"># delete all AWS, stop paying</span>
+terraform apply    <span class="comm"># recreate VMs + inventory</span>
+ansible-playbook site.yml  <span class="comm"># reconfigure end-to-end</span></div></div>
+    </div>
+    <div class="spacer"><div class="arrow">⇄</div></div>
+    <div class="col manual"><div class="step"><div class="who">you · by hand</div>
+      <h4>Reset = remember &amp; undo everything manually</h4>
+      <div class="note">No code-as-truth: reopen every RDP/console session, hunt down every object, ACL, share, and template you made, delete/recreate in order, hope nothing's missed. "Clean rebuild" = terminate every resource and redo the entire 50+-step flow.</div></div></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- TAB 3 : BACKGROUND MECHANICS                                  -->
+<!-- ============================================================ -->
+<section id="tab-net" class="tabpane">
+  <h2 class="phase-title" style="font-size:16px">The plumbing underneath — what actually travels the wire</h2>
+  <p class="phase-sub">The two tabs above show <i>what</i> happens. This tab shows the <i>how</i>: the API/connection sequences that make it work, so you can trace the flow at a granular level.</p>
+
+  <!-- Terraform apply ladder -->
+  <div class="seq">
+    <h4>① <span style="color:var(--tf2)">terraform apply</span> — control-node ↔ AWS API (ordered by dependency graph)</h4>
+    <div class="ladder">
+      <div class="lrow"><div class="lactor a-op">Your Mac<br>(terraform)</div><div></div><div class="lactor a-aws">AWS API<br>(us-east-1)</div></div>
+      <div class="lrow"><div></div><div class="lmsg"><div class="line"></div><span class="ar" style="right:0">▶</span><span class="txt">DescribeImages ×2 (resolve AMIs)</span></div><div></div></div>
+      <div class="lrow"><div></div><div class="lmsg rl"><div class="line"></div><span class="ar" style="left:0">◀</span><span class="txt">ami-win, ami-ubuntu</span></div><div></div></div>
+      <div class="lrow"><div></div><div class="lmsg"><div class="line"></div><span class="ar" style="right:0">▶</span><span class="txt">CreateVpc → CreateIgw → AttachIgw</span></div><div></div></div>
+      <div class="lrow"><div></div><div class="lmsg"><div class="line"></div><span class="ar" style="right:0">▶</span><span class="txt">CreateSubnet → CreateRouteTable → Associate</span></div><div></div></div>
+      <div class="lrow"><div></div><div class="lmsg"><div class="line"></div><span class="ar" style="right:0">▶</span><span class="txt">CreateSecurityGroup + Authorize×5</span></div><div></div></div>
+      <div class="lrow"><div></div><div class="lmsg"><div class="line"></div><span class="ar" style="right:0">▶</span><span class="txt">ImportKeyPair</span></div><div></div></div>
+      <div class="lrow"><div></div><div class="lmsg"><div class="line"></div><span class="ar" style="right:0">▶</span><span class="txt">RunInstances ×(2–3 win) + ×1 pivot (user_data attached)</span></div><div></div></div>
+      <div class="lrow"><div></div><div class="lmsg rl"><div class="line"></div><span class="ar" style="left:0">◀</span><span class="txt">instance IDs + public IPs (after running)</span></div><div></div></div>
+      <div class="lrow"><div></div><div class="lmsg"><div class="line"></div><span class="ar" style="right:0">▶</span><span class="txt">write terraform.tfstate · render inventory/hosts.ini</span></div><div></div></div>
+    </div>
+    <div class="callout tf">Terraform polls each instance to <code>running</code> before reading <code>public_ip</code>. It does <b>not</b> wait for the guest OS / user_data to finish — that's why you sleep ~5 min before Ansible.</div>
+  </div>
+
+  <!-- user_data boot -->
+  <div class="seq">
+    <h4>② EC2 first-boot — how a raw Windows AMI becomes Ansible-reachable (per host)</h4>
+    <div class="ladder">
+      <div class="lrow"><div class="lactor a-aws">EC2 / EC2Launch</div><div></div><div class="lactor a-host">Windows guest</div></div>
+      <div class="lrow"><div></div><div class="lmsg"><div class="line"></div><span class="ar" style="right:0">▶</span><span class="txt">boot → EC2Launch reads user_data &lt;powershell&gt;</span></div><div></div></div>
+      <div class="lrow"><div></div><div class="lmsg"><div class="line"></div><span class="ar" style="right:0">▶</span><span class="txt">set Administrator pw · Rename-Computer</span></div><div></div></div>
+      <div class="lrow"><div></div><div class="lmsg"><div class="line"></div><span class="ar" style="right:0">▶</span><span class="txt">Enable-PSRemoting · harden WinRM · open 5985</span></div><div></div></div>
+      <div class="lrow"><div></div><div class="lmsg rl"><div class="line"></div><span class="ar" style="left:0">◀</span><span class="txt">Restart-Computer -Force (rename applies)</span></div><div></div></div>
+      <div class="lrow"><div></div><div class="lmsg"><div class="line"></div><span class="ar" style="right:0">▶</span><span class="txt">back up: WinRM 5985 listening, NTLM, encrypted</span></div><div></div></div>
+    </div>
+    <div class="callout state">This runs once, as SYSTEM, with no operator involved. It is the cloud stand-in for a pre-baked Vagrant box.</div>
+  </div>
+
+  <!-- Ansible task ladder -->
+  <div class="seq">
+    <h4>③ One Ansible Windows task — module → PowerShell → WinRM → JSON result</h4>
+    <div class="ladder">
+      <div class="lrow"><div class="lactor a-ans">Control node<br>(ansible)</div><div></div><div class="lactor a-host">Windows host<br>(WinRM 5985)</div></div>
+      <div class="lrow"><div></div><div class="lmsg"><div class="line"></div><span class="ar" style="right:0">▶</span><span class="txt">NTLM negotiate/auth (message-level encryption)</span></div><div></div></div>
+      <div class="lrow"><div></div><div class="lmsg"><div class="line"></div><span class="ar" style="right:0">▶</span><span class="txt">compile module (e.g. microsoft.ad.user) → PowerShell payload</span></div><div></div></div>
+      <div class="lrow"><div></div><div class="lmsg"><div class="line"></div><span class="ar" style="right:0">▶</span><span class="txt">WSMan Create Shell + Command, ship payload</span></div><div></div></div>
+      <div class="lrow"><div></div><div class="lmsg rl"><div class="line"></div><span class="ar" style="left:0">◀</span><span class="txt">module checks state → acts only if drift → JSON {changed:bool}</span></div><div></div></div>
+      <div class="lrow"><div></div><div class="lmsg rl"><div class="line"></div><span class="ar" style="left:0">◀</span><span class="txt">stdout parsed → ok / changed / failed → next task</span></div><div></div></div>
+    </div>
+    <div class="callout ans">Idempotence lives in the module: it reads current state first and reports <code>changed=false</code> if already correct. That's why <code>site.yml</code> and <code>reset.yml</code> are safe to re-run. Reboots (promote/join) are handled by the collection: it triggers the reboot, waits, and re-establishes WinRM before the next task.</div>
+  </div>
+
+  <!-- transport matrix -->
+  <div class="seq">
+    <h4>④ Connection &amp; auth matrix (from ansible.cfg + group_vars)</h4>
+    <table class="matrix">
+      <tr><th>Target group</th><th>Transport</th><th>Auth</th><th>Port</th><th>Identity</th><th>Set in</th></tr>
+      <tr><td>windows (dc01/srv01/ws01)</td><td><code>winrm</code>, scheme http</td><td>NTLM, AllowUnencrypted=false</td><td>5985</td><td>Administrator / Passw0rd!Admin#2026</td><td>group_vars/windows.yml</td></tr>
+      <tr><td>linux_pivot</td><td><code>ssh</code>, pipelining</td><td>key (id_rsa) + become</td><td>22</td><td>ubuntu</td><td>group_vars/linux_pivot.yml</td></tr>
+      <tr><td>control-node globals</td><td>forks=8, timeout=60</td><td>host_key_checking=off</td><td>—</td><td>—</td><td>ansible.cfg</td></tr>
+    </table>
+    <div class="callout">Password parity is enforced by design: Terraform's <code>admin_password</code> MUST equal <code>ansible_password</code> / <code>lab_domain_admin_password</code>. After promotion the local Administrator becomes the domain Administrator with the same password, so every phase lines up.</div>
+  </div>
+
+  <!-- state vs no state -->
+  <div class="seq">
+    <h4>⑤ State &amp; idempotency — how each tool avoids doing work twice</h4>
+    <table class="matrix">
+      <tr><th></th><th style="color:var(--tf2)">Terraform</th><th style="color:var(--ans2)">Ansible</th></tr>
+      <tr><td>Source of truth</td><td><code>terraform.tfstate</code> (records real resource IDs)</td><td>The target's live state, read per task</td></tr>
+      <tr><td>Re-run behaviour</td><td>Diffs desired vs state → only creates/updates deltas</td><td>Each module checks-then-acts → <code>changed=false</code> if OK</td></tr>
+      <tr><td>Deletion</td><td><code>terraform destroy</code> removes exactly what it made</td><td><code>reset.yml</code> sets objects <code>state=absent</code>, re-plants</td></tr>
+      <tr><td>Ordering</td><td>Dependency graph (implicit + explicit refs)</td><td>Explicit: site.yml import order + role order</td></tr>
+      <tr><td>Failure/retry</td><td>Partial apply; re-run continues from state</td><td><code>until/retries/delay</code> loops (DNS, LDAP, publish)</td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- TAB 4 : ATTACK MAP                                            -->
+<!-- ============================================================ -->
+<section id="tab-map" class="tabpane">
+  <h2 class="phase-title" style="font-size:16px">What the two tools ultimately build — the intended attack chain</h2>
+  <p class="phase-sub">The reason for every user, ACL, SPN, and template above. Each stage's flag is readable only by the identity that stage yields, so flags double as progress checkpoints. Values from <code>group_vars/all.yml</code> + <code>playbooks/06-flags.yml</code>.</p>
+
+  <div class="chainmap">
+    <div class="chainstep"><div class="chainbox"><div class="cs-stage">Stage 0 · foothold</div>
+      <div class="cs-t">Read creds on the pivot</div>
+      <div class="cs-d">SSH to pivot → <code>~/notes/creds.txt</code> leaks <code>helpdesk : Helpdesk#123</code> (planted by role linux_pivot).</div>
+      <div class="cs-flag">FLAG{w3lc0me_t0_vuln_local_recon_stage0}</div></div></div>
+    <div class="chaindrop">▼ authenticate as any domain user</div>
+    <div class="chainstep"><div class="chainbox"><div class="cs-stage">Stage 1 · Kerberoast</div>
+      <div class="cs-t">Crack svc_mssql (weak "Summer2024")</div>
+      <div class="cs-d">GetUserSPNs → request TGS for the SPN planted by vuln_kerberoast → crack offline. Loot on <code>\\srv01\mssql_backups$</code>.</div>
+      <div class="cs-flag">FLAG{kerber0ast_svc_mssql_cr4cked_stage1}</div></div></div>
+    <div class="chaindrop">▼ (alt warm-up) ▼</div>
+    <div class="chainstep"><div class="chainbox"><div class="cs-stage">Stage 1b · AS-REP roast</div>
+      <div class="cs-t">Crack svc_backup (no pre-auth)</div>
+      <div class="cs-d">GetNPUsers (pre-auth disabled by vuln_asrep) → crack "Backup2023". Loot on <code>\\srv01\backups$</code>.</div>
+      <div class="cs-flag">FLAG{asrep_r04sting_no_pre4uth_stage1b}</div></div></div>
+    <div class="chaindrop">▼ svc_mssql has GenericAll over "IT Admins"</div>
+    <div class="chainstep"><div class="chainbox"><div class="cs-stage">Stage 2 · ACL abuse</div>
+      <div class="cs-t">Add yourself to IT Admins</div>
+      <div class="cs-d">GenericAll (planted by vuln_acl_dcsync) → add a controlled principal to the group. Loot on <code>\\srv01\itadmin$</code>.</div>
+      <div class="cs-flag">FLAG{generic_all_group_takeover_stage2}</div></div></div>
+    <div class="chaindrop">▼ IT Admins holds replication rights</div>
+    <div class="chainstep"><div class="chainbox"><div class="cs-stage">Stage 3 · DCSync</div>
+      <div class="cs-t">Dump krbtgt / full domain</div>
+      <div class="cs-d">secretsdump via the DS-Replication rights (planted by vuln_acl_dcsync) → domain compromise. Flag: <code>\\dc01\C$\Flags\domain_pwned.txt</code>.</div>
+      <div class="cs-flag">FLAG{dcsync_krbtgt_d0main_pwned_stage3}</div></div></div>
+    <div class="chaindrop">▼ bonus path (independent, via ADCS)</div>
+    <div class="chainstep"><div class="chainbox" style="border-color:var(--tf)"><div class="cs-stage" style="color:var(--tf2)">Bonus · ADCS ESC1</div>
+      <div class="cs-t">Impersonate a Domain Admin via certificate</div>
+      <div class="cs-d">Any Domain User enrols the ESC1 template (planted by vuln_adcs_esc1: ENROLLEE_SUPPLIES_SUBJECT + Client-Auth EKU) supplying a DA in the SAN → authenticate as that DA. Flag: <code>\\srv01\C$\Flags\adcs_esc1.txt</code>.</div>
+      <div class="cs-flag">FLAG{adcs_esc1_san_imp3rsonation_bonus}</div></div></div>
+  </div>
+
+  <div class="callout" style="margin-top:16px">Provenance recap: <b>Terraform</b> built the 4 hosts + network this runs on; <b>Ansible</b> created every identity and misconfiguration above (roles <code>ad_content</code>, <code>vuln_kerberoast</code>, <code>vuln_asrep</code>, <code>vuln_acl_dcsync</code>, <code>adcs_ca</code>, <code>vuln_adcs_esc1</code>, <code>flags</code>, <code>linux_pivot</code>). Spoiler map: <code>scripts/check-flags.sh</code>; full path: <code>docs/walkthrough.md</code>.</div>
+</section>
+
+</main>
+
+<footer>
+  <b>How to read this dashboard:</b> Tabs 1–2 are the side-by-side <i>automated vs. manual</i> flow (left = tool, right = by hand). Tab 3 is the background wire-level plumbing (API calls, boot, WinRM, state). Tab 4 is the end product these tools exist to build.
+  Terraform owns <i>infrastructure</i> and tracks it in <code>terraform.tfstate</code>; Ansible owns <i>configuration</i> and is idempotent; the single bridge is the generated <code>inventory/hosts.ini</code>.
+  Two commands (<code>terraform apply</code> → <code>ansible-playbook site.yml</code>) replace 50+ ordered, typo-prone manual steps across the AWS console, three RDP sessions, and an SSH session.
+  <br><br>Built from: <code>terraform/*.tf</code> · <code>terraform/templates/*</code> · <code>site.yml</code> · <code>playbooks/*.yml</code> · <code>roles/*/{tasks,defaults,templates}</code> · <code>inventory/group_vars/*</code> · <code>ansible.cfg</code>. For learning only; nothing was executed.
+</footer>
+
+<script>
+  function tab(id,btn){
+    document.querySelectorAll('.tabpane').forEach(p=>p.classList.remove('show'));
+    document.getElementById('tab-'+id).classList.add('show');
+    document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+  function openAll(){document.querySelectorAll('#tab-ans details.stage').forEach(d=>d.open=true);}
+  function closeAll(){document.querySelectorAll('#tab-ans details.stage').forEach(d=>d.open=false);}
+</script>
+</body>
+</html>
